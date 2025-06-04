@@ -1,0 +1,64 @@
+{
+  "name": "xcresult-json",
+  "version": "1.0.0",
+  "description": "Extract structured JSON test results from Xcode's .xcresult bundles",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "build:types": "tsx scripts/generate-types.ts",
+    "test": "jest",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "bin": {
+    "xcresult-json": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "src/types/report.d.ts"
+  ],
+  "keywords": [
+    "xcode",
+    "xcresult",
+    "xcresulttool",
+    "ios",
+    "macos",
+    "testing",
+    "json",
+    "cli"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/xcresult-json.git"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.15.29",
+    "@typescript-eslint/eslint-plugin": "^8.33.1",
+    "@typescript-eslint/parser": "^8.33.1",
+    "eslint": "^9.28.0",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-plugin-prettier": "^5.4.1",
+    "jest": "^29.7.0",
+    "json-schema-to-typescript": "^15.0.4",
+    "prettier": "^3.5.3",
+    "ts-jest": "^29.3.4",
+    "tsup": "^8.5.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@types/yargs": "^17.0.33",
+    "ajv": "^8.17.1",
+    "chalk": "^5.4.1",
+    "execa": "^9.6.0",
+    "yargs": "^18.0.0"
+  }
+}

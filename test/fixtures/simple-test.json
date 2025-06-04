@@ -1,0 +1,44 @@
+{
+  "issues": {
+    "testableSummaries": {
+      "_values": [
+        {
+          "name": {
+            "_value": "MyAppTests"
+          },
+          "tests": {
+            "_values": [
+              {
+                "identifier": {
+                  "_value": "MyAppTests.testExample"
+                },
+                "testStatus": {
+                  "_value": "Success"
+                },
+                "duration": {
+                  "_value": 0.123
+                }
+              },
+              {
+                "identifier": {
+                  "_value": "MyAppTests.testFailure"
+                },
+                "testStatus": {
+                  "_value": "Failure"
+                },
+                "duration": {
+                  "_value": 0.456
+                },
+                "summaryRef": {
+                  "id": {
+                    "_value": "test-failure-id"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

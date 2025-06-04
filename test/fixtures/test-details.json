@@ -1,0 +1,21 @@
+{
+  "summaries": {
+    "_values": [
+      {
+        "message": {
+          "_value": "XCTAssertEqual failed: (\"1\") is not equal to (\"2\")"
+        }
+      }
+    ]
+  },
+  "location": {
+    "_value": {
+      "fileName": {
+        "_value": "/Users/test/MyApp/MyAppTests.swift"
+      },
+      "lineNumber": {
+        "_value": 42
+      }
+    }
+  }
+}

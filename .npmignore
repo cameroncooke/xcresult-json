@@ -1,0 +1,13 @@
+src/
+test/
+scripts/
+.github/
+coverage/
+.eslintrc.json
+.prettierrc
+jest.config.js
+tsconfig.json
+tsup.config.ts
+*.xcresult
+.DS_Store
+*.log
