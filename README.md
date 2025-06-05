@@ -1,6 +1,9 @@
 # xcresult-json
 
-[![CI](https://github.com/yourusername/xcresult-json/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/xcresult-json/actions/workflows/ci.yml)
+> [!WARNING]
+> This product is still in development and is likely not fully functional or tested.
+
+[![CI](https://github.com/cameroncooke/xcresult-json/actions/workflows/ci.yml/badge.svg)](https://github.com/cameroncooke/xcresult-json/actions/workflows/ci.yml)
 [![npm version](https://badge.fury.io/js/xcresult-json.svg)](https://badge.fury.io/js/xcresult-json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
