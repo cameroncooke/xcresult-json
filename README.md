@@ -1,7 +1,7 @@
 # xcresult-json
 
 > [!WARNING]
-> This product is still in development and is likely not fully functional or tested.
+> This product is still in active development and is likely not fully functional or tested.
 
 [![CI](https://github.com/cameroncooke/xcresult-json/actions/workflows/ci.yml/badge.svg)](https://github.com/cameroncooke/xcresult-json/actions/workflows/ci.yml)
 [![npm version](https://badge.fury.io/js/xcresult-json.svg)](https://badge.fury.io/js/xcresult-json)
