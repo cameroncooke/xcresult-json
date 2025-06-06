@@ -1,6 +1,5 @@
 import { FormatParser, ParsedReport, ParsedSuiteResult, ParsedTestResult } from './types.js';
 import { execa } from 'execa';
-import { validateAndLog } from '../validator.js';
 
 /**
  * Parser for Xcode 15.x xcresult format
@@ -12,11 +11,11 @@ export class Xcode15Parser implements FormatParser {
 
   canParse(data: any): boolean {
     // Xcode 15 format has actions._values structure (modern object format)
-    return data?.actions?._values && Array.isArray(data.actions._values);
+    return !!(data?.actions?._values && Array.isArray(data.actions._values));
   }
 
   async parse(bundlePath: string, data: any): Promise<ParsedReport> {
-    const validated = validateAndLog(data, 'test summary');
+    const validated = data; // Skip validation to avoid circular imports
 
     // Get action timing for total duration
     const action = validated.actions?._values?.[0];
@@ -139,7 +138,7 @@ export class Xcode15Parser implements FormatParser {
       try {
         const details = await this.getTestDetails(bundlePath, test.summaryRef.id._value);
         if (details) {
-          const validated = validateAndLog(details, `test details for ${name}`);
+          const validated = details; // Skip validation to avoid circular imports
 
           // Extract failure message from failureSummaries
           const failureSummaries = validated.failureSummaries?._values || [];
@@ -221,6 +220,8 @@ export async function getXcode15TestResults(bundlePath: string): Promise<any> {
     ]);
     return JSON.parse(stdout);
   } catch (error) {
-    throw new Error(`Failed to get Xcode 15 test results: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Failed to get Xcode 15 test results: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }

@@ -11,7 +11,7 @@ export class Xcode16Parser implements FormatParser {
 
   canParse(data: any): boolean {
     // Xcode 16 format has testNodes array at the root
-    return data?.testNodes && Array.isArray(data.testNodes);
+    return !!(data?.testNodes && Array.isArray(data.testNodes));
   }
 
   async parse(_bundlePath: string, data: any): Promise<ParsedReport> {
@@ -126,6 +126,8 @@ export async function getXcode16TestResults(bundlePath: string): Promise<any> {
     ]);
     return JSON.parse(stdout);
   } catch (error) {
-    throw new Error(`Failed to get Xcode 16 test results: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Failed to get Xcode 16 test results: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }

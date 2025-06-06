@@ -31,17 +31,17 @@ export interface FormatParser {
    * Name of the format (e.g., "xcode16.4", "xcode15.x", "legacy")
    */
   name: string;
-  
+
   /**
    * Priority order for trying parsers (higher = try first)
    */
   priority: number;
-  
+
   /**
    * Check if this parser can handle the given xcresult data
    */
   canParse(data: any): boolean;
-  
+
   /**
    * Parse the xcresult data into our common format
    */

@@ -20,7 +20,7 @@ export async function detectCapabilities(): Promise<XcresulttoolCapabilities> {
     try {
       // Check if 'get' is a subcommand or direct command
       const { stdout: helpOutput } = await execa('xcrun', ['xcresulttool', '--help']);
-      
+
       if (helpOutput.includes('Subcommands:') && helpOutput.includes('get')) {
         // Modern format - 'get' is a subcommand
         try {
@@ -64,19 +64,33 @@ export async function detectCapabilities(): Promise<XcresulttoolCapabilities> {
       commandFormat,
     };
   } catch (error) {
-    throw new Error(`Failed to detect xcresulttool capabilities: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Failed to detect xcresulttool capabilities: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }
 
 /**
  * Get xcresult data using the appropriate command format
  */
-export async function getXcresultData(bundlePath: string, capabilities: XcresulttoolCapabilities): Promise<any> {
+export async function getXcresultData(
+  bundlePath: string,
+  capabilities: XcresulttoolCapabilities
+): Promise<any> {
   let command: string[];
 
   if (capabilities.commandFormat === 'modern' && capabilities.supportsGetTestResults) {
     // Xcode 16+ format - use test-results (LATEST FORMAT)
-    command = ['xcrun', 'xcresulttool', 'get', 'test-results', '--path', bundlePath, '--format', 'json'];
+    command = [
+      'xcrun',
+      'xcresulttool',
+      'get',
+      'test-results',
+      '--path',
+      bundlePath,
+      '--format',
+      'json',
+    ];
   } else if (capabilities.commandFormat === 'legacy' && capabilities.supportsGetObject) {
     // Xcode 15.x format - first try without --legacy flag
     command = ['xcrun', 'xcresulttool', 'get', 'object', '--path', bundlePath, '--format', 'json'];
@@ -89,15 +103,17 @@ export async function getXcresultData(bundlePath: string, capabilities: Xcresult
 
   try {
     const { stdout } = await execa(command[0], command.slice(1));
-    
+
     // Fix malformed JSON with unescaped newlines
     const fixedJsonString = stdout.replace(
       /"Human-readable duration with optional\ncomponents of days, hours, minutes and seconds"/g,
       '"Human-readable duration with optional\\ncomponents of days, hours, minutes and seconds"'
     );
-    
+
     return JSON.parse(fixedJsonString);
   } catch (error) {
-    throw new Error(`Failed to get xcresult data: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Failed to get xcresult data: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }

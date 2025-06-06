@@ -36,15 +36,19 @@ export class ParserRegistry {
           return await parser.parse(bundlePath, data);
         }
       } catch (error) {
-        errors.push(new Error(`${parser.name} parser failed: ${error instanceof Error ? error.message : String(error)}`));
+        errors.push(
+          new Error(
+            `${parser.name} parser failed: ${error instanceof Error ? error.message : String(error)}`
+          )
+        );
       }
     }
 
     // If no parser could handle the data, throw a comprehensive error
-    const errorMessages = errors.map(e => e.message).join('\n  ');
+    const errorMessages = errors.map((e) => e.message).join('\n  ');
     throw new Error(
       `No parser could handle the xcresult format. Tried parsers in order:\n  ${errorMessages}\n` +
-      `Available parsers: ${this.parsers.map(p => p.name).join(', ')}`
+        `Available parsers: ${this.parsers.map((p) => p.name).join(', ')}`
     );
   }
 

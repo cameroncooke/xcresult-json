@@ -10,7 +10,10 @@ export class LegacyParser implements FormatParser {
 
   canParse(data: any): boolean {
     // Legacy format has issues.testableSummaries structure
-    return data?.issues?.testableSummaries?._values && Array.isArray(data.issues.testableSummaries._values);
+    return !!(
+      data?.issues?.testableSummaries?._values &&
+      Array.isArray(data.issues.testableSummaries._values)
+    );
   }
 
   async parse(_bundlePath: string, data: any): Promise<ParsedReport> {

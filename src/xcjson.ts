@@ -7,10 +7,10 @@ import { Xcode15LegacyParser } from './formats/xcode15-legacy-parser.js';
 import { LegacyParser } from './formats/legacy-parser.js';
 
 // Register all format parsers on module load (in priority order)
-parserRegistry.register(new Xcode16Parser());      // Priority 100 - Latest format
-parserRegistry.register(new Xcode15Parser());      // Priority 90  - Xcode 15 modern
+parserRegistry.register(new Xcode16Parser()); // Priority 100 - Latest format
+parserRegistry.register(new Xcode15Parser()); // Priority 90  - Xcode 15 modern
 parserRegistry.register(new Xcode15LegacyParser()); // Priority 85  - Xcode 15 legacy fallback
-parserRegistry.register(new LegacyParser());       // Priority 80  - Old test fixtures
+parserRegistry.register(new LegacyParser()); // Priority 80  - Old test fixtures
 
 export class XcjsonError extends Error {
   readonly code: number | undefined;
@@ -57,7 +57,7 @@ export async function getSummary(bundlePath: string): Promise<any> {
       }
       throw error;
     }
-    
+
     // Get xcresult data using appropriate command
     const result = await getXcresultData(bundlePath, capabilities);
 
@@ -143,7 +143,7 @@ export async function getSchema(_subcommand: string): Promise<any> {
     properties: {
       testNodes: { type: 'array' },
       devices: { type: 'array' },
-      testPlanConfigurations: { type: 'array' }
-    }
+      testPlanConfigurations: { type: 'array' },
+    },
   };
 }

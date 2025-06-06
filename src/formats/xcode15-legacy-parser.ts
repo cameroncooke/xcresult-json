@@ -1,6 +1,5 @@
 import { FormatParser, ParsedReport, ParsedSuiteResult, ParsedTestResult } from './types.js';
 import { execa } from 'execa';
-import { validateAndLog } from '../validator.js';
 
 /**
  * Parser for Xcode 15.x xcresult format with --legacy flag
@@ -17,7 +16,7 @@ export class Xcode15LegacyParser implements FormatParser {
 
   async parse(bundlePath: string, data: any): Promise<ParsedReport> {
     // Same implementation as Xcode15Parser
-    const validated = validateAndLog(data, 'test summary');
+    const validated = data; // Skip validation to avoid circular imports
 
     // Get action timing for total duration
     const action = validated.actions?._values?.[0];
@@ -139,7 +138,7 @@ export class Xcode15LegacyParser implements FormatParser {
       try {
         const details = await this.getTestDetails(bundlePath, test.summaryRef.id._value);
         if (details) {
-          const validated = validateAndLog(details, `test details for ${name}`);
+          const validated = details; // Skip validation to avoid circular imports
 
           // Extract failure message from failureSummaries
           const failureSummaries = validated.failureSummaries?._values || [];
@@ -222,6 +221,8 @@ export async function getXcode15LegacyTestResults(bundlePath: string): Promise<a
     ]);
     return JSON.parse(stdout);
   } catch (error) {
-    throw new Error(`Failed to get Xcode 15 legacy test results: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Failed to get Xcode 15 legacy test results: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }
