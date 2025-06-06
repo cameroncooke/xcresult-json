@@ -231,7 +231,7 @@ The tool outputs a structured JSON format representing your test results:
 ## Requirements
 
 - macOS with Xcode installed
-- Node.js 18 or higher  
+- Node.js 20 or higher  
 - Xcode 12+ (automatically detects and adapts to xcresulttool capabilities)
 
 ## Programmatic Usage
