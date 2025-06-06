@@ -1,4 +1,4 @@
-import { getSummary } from './xcjson.js';
+import { getSummary, getTestDetails } from './xcjson.js';
 import { validateAndLog } from './validator.js';
 import { Report, SuiteResult, TestResult } from './types/report.js';
 import { execa } from 'execa';
@@ -66,7 +66,7 @@ async function extractTestResult(
   // If test failed, get details
   if (status === 'Failure' && test.summaryRef?.id?._value) {
     try {
-      const details = await getLegacyTestDetails(bundlePath, test.summaryRef.id._value);
+      const details = await getTestDetails(bundlePath, test.summaryRef.id._value);
       if (details) {
         const validated = validateAndLog(details, `test details for ${name}`);
 
@@ -231,26 +231,6 @@ function createSuiteFromNode(node: NewTestNode): SuiteResult[] {
   return suites;
 }
 
-async function getLegacyTestDetails(bundlePath: string, testId: string): Promise<any> {
-  try {
-    const { stdout } = await execa('xcrun', [
-      'xcresulttool',
-      'get',
-      'object',
-      '--legacy',
-      '--path',
-      bundlePath,
-      '--id',
-      testId,
-      '--format',
-      'json',
-    ]);
-    return JSON.parse(stdout);
-  } catch (error: any) {
-    console.warn(`Warning: Failed to get legacy test details for ${testId}: ${error.message}`);
-    return null;
-  }
-}
 
 export async function parseXCResult(bundlePath: string): Promise<Report> {
   // For now, always use legacy format to get proper timing/location data
@@ -378,8 +358,8 @@ async function parseLegacyFormat(summary: any, bundlePath: string): Promise<Repo
     };
   }
 
-  // Fetch detailed test data using the reference (force legacy format)
-  const testDetails = await getLegacyTestDetails(bundlePath, testsRef.id._value);
+  // Fetch detailed test data using the reference
+  const testDetails = await getTestDetails(bundlePath, testsRef.id._value);
   const testSummaries = testDetails?.summaries?._values || [];
 
   // Parse each testable summary
