@@ -38,8 +38,6 @@ jobs:
         run: |
           xcrun xcresulttool version
           xcrun xcresulttool --help
-          echo "Available commands:"
-          xcrun xcresulttool help
       
       - name: Generate test fixture
         run: |
