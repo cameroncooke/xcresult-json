@@ -2,8 +2,6 @@ export interface TestResult {
   name: string; // e.g. "LoginTests.testValidLogin"
   status: 'Success' | 'Failure';
   duration: number; // seconds
-  file: string; // absolute path
-  line: number; // 1-based line number
   failureMessage?: string;
 }
 

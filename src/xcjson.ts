@@ -24,8 +24,8 @@ async function checkCapabilities(): Promise<boolean> {
   }
 
   try {
-    const { stdout } = await execa('xcrun', ['xcresulttool', '-h']);
-    cache.supportsTestReport = stdout.includes('test-report');
+    const { stdout } = await execa('xcrun', ['xcresulttool', 'get', '--help']);
+    cache.supportsTestReport = stdout.includes('test-results');
     return cache.supportsTestReport;
   } catch {
     throw new XcjsonError(
@@ -37,10 +37,10 @@ async function checkCapabilities(): Promise<boolean> {
 }
 
 export async function getSchema(subcommand: string): Promise<any> {
-  const supportsTestReport = await checkCapabilities();
-  const command = supportsTestReport ? 'test-report' : 'tests';
-
   try {
+    const supportsTestResults = await checkCapabilities();
+    const command = supportsTestResults ? 'test-results' : 'object';
+
     const { stdout } = await execa('xcrun', ['xcresulttool', 'help', 'get', command, subcommand]);
 
     // Extract JSON Schema section
@@ -82,6 +82,13 @@ export async function getSchema(subcommand: string): Promise<any> {
     if (error instanceof XcjsonError) {
       throw error;
     }
+    if (error.message?.includes('not found')) {
+      throw new XcjsonError(
+        'Failed to run xcresulttool. Ensure Xcode is installed.',
+        'XCRESULTTOOL_NOT_FOUND',
+        1
+      );
+    }
     throw new XcjsonError(
       `Failed to get schema: ${error.message}`,
       'SCHEMA_FETCH_ERROR',
@@ -91,26 +98,39 @@ export async function getSchema(subcommand: string): Promise<any> {
 }
 
 const resultCache = new Map<string, any>();
+let cacheEnabled = true;
 
 export async function getSummary(bundlePath: string): Promise<any> {
   const cacheKey = `summary:${bundlePath}`;
-  if (resultCache.has(cacheKey)) {
+  if (cacheEnabled && resultCache.has(cacheKey)) {
     return resultCache.get(cacheKey);
   }
 
-  const supportsTestReport = await checkCapabilities();
-  const args = supportsTestReport
-    ? ['xcresulttool', 'get', 'test-report', 'tests', '--path', bundlePath, '--format', 'json']
-    : ['xcresulttool', 'get', '--path', bundlePath, '--format', 'json'];
-
   try {
+    const supportsTestResults = await checkCapabilities();
+    const args = supportsTestResults
+      ? ['xcresulttool', 'get', 'test-results', 'tests', '--path', bundlePath]
+      : ['xcresulttool', 'get', 'object', '--legacy', '--path', bundlePath, '--format', 'json'];
+
     const { stdout } = await execa('xcrun', args);
     const result = JSON.parse(stdout);
-    resultCache.set(cacheKey, result);
+    if (cacheEnabled) {
+      resultCache.set(cacheKey, result);
+    }
     return result;
   } catch (error: any) {
+    if (error instanceof XcjsonError) {
+      throw error; // Re-throw XcjsonError as-is (e.g., from checkCapabilities)
+    }
     if (error.exitCode === 1 && error.stderr?.includes('not a valid .xcresult bundle')) {
       throw new XcjsonError(`Invalid xcresult bundle: ${bundlePath}`, 'INVALID_BUNDLE', 2);
+    }
+    if (error.message?.includes('not found') || error.message?.includes('xcresulttool not found')) {
+      throw new XcjsonError(
+        'Failed to run xcresulttool. Ensure Xcode is installed.',
+        'XCRESULTTOOL_NOT_FOUND',
+        1
+      );
     }
     throw new XcjsonError(
       `Failed to get test summary: ${error.message}`,
@@ -122,30 +142,41 @@ export async function getSummary(bundlePath: string): Promise<any> {
 
 export async function getTestDetails(bundlePath: string, testId: string): Promise<any> {
   const cacheKey = `detail:${bundlePath}:${testId}`;
-  if (resultCache.has(cacheKey)) {
+  if (cacheEnabled && resultCache.has(cacheKey)) {
     return resultCache.get(cacheKey);
   }
 
-  const supportsTestReport = await checkCapabilities();
-  const args = supportsTestReport
+  const supportsTestResults = await checkCapabilities();
+  const args = supportsTestResults
     ? [
         'xcresulttool',
         'get',
-        'test-report',
-        'test',
-        '--id',
+        'test-results',
+        'test-details',
+        '--test-id',
         testId,
         '--path',
         bundlePath,
+      ]
+    : [
+        'xcresulttool',
+        'get',
+        'object',
+        '--legacy',
+        '--path',
+        bundlePath,
+        '--id',
+        testId,
         '--format',
         'json',
-      ]
-    : ['xcresulttool', 'get', '--path', bundlePath, '--id', testId, '--format', 'json'];
+      ];
 
   try {
     const { stdout } = await execa('xcrun', args);
     const result = JSON.parse(stdout);
-    resultCache.set(cacheKey, result);
+    if (cacheEnabled) {
+      resultCache.set(cacheKey, result);
+    }
     return result;
   } catch (error: any) {
     console.warn(
@@ -157,4 +188,14 @@ export async function getTestDetails(bundlePath: string, testId: string): Promis
 
 export function clearCache(): void {
   resultCache.clear();
+  delete cache.supportsTestReport;
+}
+
+export function disableCache(): void {
+  cacheEnabled = false;
+  clearCache();
+}
+
+export function enableCache(): void {
+  cacheEnabled = true;
 }

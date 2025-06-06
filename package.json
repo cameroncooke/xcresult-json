@@ -1,7 +1,7 @@
 {
   "name": "xcresult-json",
   "version": "1.0.0",
-  "description": "Extract structured JSON test results from Xcode's .xcresult bundles",
+  "description": "Production-ready CLI tool for extracting test results from Xcode .xcresult bundles with comprehensive failure message extraction and mixed framework support",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -27,7 +27,13 @@
     "macos",
     "testing",
     "json",
-    "cli"
+    "cli",
+    "swift-testing",
+    "xctest",
+    "ci-cd",
+    "test-results",
+    "failure-messages",
+    "assertion-errors"
   ],
   "author": "Your Name",
   "license": "MIT",

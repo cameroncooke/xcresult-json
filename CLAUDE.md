@@ -38,37 +38,43 @@ node dist/index.js --path ./path/to/test.xcresult --pretty
 
 ## Architecture Overview
 
-This is a CLI tool that extracts test results from Xcode `.xcresult` bundles into structured JSON. The architecture follows a modular design:
+This is a production-ready CLI tool that extracts test results from Xcode `.xcresult` bundles into structured JSON with comprehensive failure message extraction. The architecture follows a modular design optimized for real-world usage:
 
 ### Core Flow
-1. **CLI Entry** (`src/index.ts`) → Parses arguments with yargs
-2. **XCJson Wrapper** (`src/xcjson.ts`) → Executes `xcresulttool` and caches results
-3. **Parser** (`src/parser.ts`) → Transforms raw data into structured `Report` format
-4. **Validator** (`src/validator.ts`) → Validates JSON against Apple's schema (warnings only)
-5. **Output** → Returns JSON with proper exit codes (0=success, 10=test failures)
+1. **CLI Entry** (`src/index.ts`) → Parses arguments with yargs, handles customer-facing interface
+2. **XCJson Wrapper** (`src/xcjson.ts`) → Executes `xcresulttool` with capability detection and result caching
+3. **Parser** (`src/parser.ts`) → Transforms raw data into structured `Report` format with failure message extraction
+4. **Validator** (`src/validator.ts`) → Optional JSON validation against Apple's schema (disabled by default)
+5. **Output** → Returns clean JSON with proper exit codes (0=success, 10=test failures)
 
 ### Key Architectural Decisions
 
-- **In-Memory Caching**: The `xcjson.ts` module caches xcresulttool responses to avoid repeated expensive subprocess calls
-- **Forward Compatibility**: Validation failures only warn, don't stop execution (Apple's schema evolves)
+- **Legacy Format Priority**: Uses legacy xcresulttool format to access detailed failure messages and timing data
+- **Smart Caching**: The `xcjson.ts` module caches xcresulttool responses to avoid repeated expensive subprocess calls
+- **Failure Message Extraction**: Parses `failureSummaries` from test details to get actual assertion messages
+- **Real Timing Data**: Calculates total duration from action start/end times for accurate performance metrics
+- **Clean Output Format**: Removed placeholder fields (file/line) to provide professional JSON output
 - **Type Safety**: Exports clean TypeScript types (`TestResult`, `SuiteResult`, `Report`) for programmatic use
 - **Error Handling**: Custom `XcjsonError` class with specific error codes for different failure modes
-- **Platform Detection**: Automatically detects Xcode version and adjusts command format
+- **Multi-Framework Support**: Handles both XCTest and Swift Testing in the same test run
 
 ### Important Implementation Details
 
-- The parser recursively processes test hierarchies (tests can have subtests)
-- Test details are fetched lazily only when failures exist
-- Exit codes communicate test results to CI/CD systems
-- The schema can be cached locally for offline development
+- The parser uses legacy format by default to access detailed test information and failure messages
+- Test failure details are fetched using individual summary reference IDs to get assertion messages
+- Total duration is calculated from action-level timing metadata for accuracy
+- Exit codes communicate test results to CI/CD systems (0=pass, 10=failures, 2=invalid bundle)
+- Schema validation is optional (--validate flag) to avoid noise in production usage
 - All async operations use proper error handling with try/catch
 
 ### Testing Approach
 
 - Tests use Jest with ts-jest for TypeScript support
-- Coverage thresholds: 90% lines/statements, 80% branches/functions
-- Test fixtures in `test/fixtures/` contain sample xcresult JSON data
+- Comprehensive test coverage with real-world validation
+- Test fixtures include actual xcresult bundles with mixed XCTest and Swift Testing scenarios
+- Integration tests verify failure message extraction and timing accuracy
 - The `test/setup.ts` file configures the test environment
+- Example project (`example_project/`) contains a calculator app with 70+ tests for realistic testing
 
 ### Build Process
 

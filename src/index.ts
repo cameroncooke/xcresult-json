@@ -2,7 +2,7 @@
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import chalk from 'chalk';
-import { getSchema } from './xcjson.js';
+import { getSchema, disableCache } from './xcjson.js';
 import { initializeValidator } from './validator.js';
 import { parseXCResult } from './parser.js';
 
@@ -11,6 +11,8 @@ interface CLIOptions {
   pretty: boolean;
   'fail-fast': boolean;
   schema: boolean;
+  validate: boolean;
+  'no-cache': boolean;
 }
 
 async function printSchema(): Promise<void> {
@@ -25,8 +27,15 @@ async function printSchema(): Promise<void> {
 
 async function processXCResult(options: CLIOptions): Promise<void> {
   try {
-    // Initialize validator
-    await initializeValidator();
+    // Disable cache if --no-cache option is set
+    if (options['no-cache']) {
+      disableCache();
+    }
+
+    // Initialize validator only if validation is enabled
+    if (options.validate) {
+      await initializeValidator();
+    }
 
     // Parse xcresult
     const report = await parseXCResult(options.path);
@@ -72,6 +81,16 @@ async function main() {
     })
     .option('schema', {
       describe: 'Print live JSON-Schema and exit',
+      type: 'boolean',
+      default: false,
+    })
+    .option('validate', {
+      describe: 'Validate output against Apple schema (warns only)',
+      type: 'boolean',
+      default: false,
+    })
+    .option('no-cache', {
+      describe: 'Disable caching of xcresulttool responses',
       type: 'boolean',
       default: false,
     })

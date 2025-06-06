@@ -1,7 +1,38 @@
-import { getSummary, getTestDetails } from './xcjson.js';
+import { getSummary } from './xcjson.js';
 import { validateAndLog } from './validator.js';
 import { Report, SuiteResult, TestResult } from './types/report.js';
+import { execa } from 'execa';
 
+// New xcresulttool format structures
+interface NewTestNode {
+  name: string;
+  nodeIdentifier?: string;
+  nodeIdentifierURL?: string;
+  nodeType: 'Test Case' | 'Test Suite' | 'Unit test bundle' | 'Test Plan' | 'Arguments';
+  result: 'Passed' | 'Failed' | 'Skipped';
+  duration?: string;
+  durationInSeconds?: number;
+  children?: NewTestNode[];
+}
+
+interface NewTestData {
+  devices: Array<{
+    architecture: string;
+    deviceId: string;
+    deviceName: string;
+    modelName: string;
+    osBuildNumber: string;
+    osVersion: string;
+    platform: string;
+  }>;
+  testNodes: NewTestNode[];
+  testPlanConfigurations: Array<{
+    configurationId: string;
+    configurationName: string;
+  }>;
+}
+
+// Legacy format structures (for fallback)
 interface TestNode {
   identifier?: { _value: string };
   testStatus?: { _value: string };
@@ -28,39 +59,59 @@ async function extractTestResult(
 
   const name = test.identifier?._value || 'Unknown Test';
   const status = test.testStatus?._value || 'Unknown';
-  const duration = test.duration?._value || 0;
+  const duration = typeof test.duration?._value === 'number' ? test.duration._value : 0;
 
-  // Default values
-  let file = 'Unknown';
-  let line = 1;
   let failureMessage: string | undefined;
 
   // If test failed, get details
   if (status === 'Failure' && test.summaryRef?.id?._value) {
     try {
-      const details = await getTestDetails(bundlePath, test.summaryRef.id._value);
+      const details = await getLegacyTestDetails(bundlePath, test.summaryRef.id._value);
       if (details) {
         const validated = validateAndLog(details, `test details for ${name}`);
 
-        // Extract failure message
-        const failureSummaries = validated.summaries?._values || [];
-        const testFailureSummaries = validated.testFailureSummaries?._values || [];
-
-        const allSummaries = [...failureSummaries, ...testFailureSummaries];
-        if (allSummaries.length > 0) {
-          const firstSummary = allSummaries[0];
-          failureMessage =
-            firstSummary.message?._value || firstSummary.producingTarget?._value || 'Test failed';
+        // Extract failure message from failureSummaries (the correct location)
+        const failureSummaries = validated.failureSummaries?._values || [];
+        
+        if (failureSummaries.length > 0) {
+          const firstFailure = failureSummaries[0];
+          failureMessage = firstFailure.message?._value || 'Test failed';
         }
 
-        // Extract location if available
-        if (validated.location?._value) {
-          file = validated.location._value.fileName?._value || file;
-          line = validated.location._value.lineNumber?._value || line;
+        // Fallback: check other summary locations
+        if (!failureMessage) {
+          const summaries = validated.summaries?._values || [];
+          const testFailureSummaries = validated.testFailureSummaries?._values || [];
+          
+          const allSummaries = [...summaries, ...testFailureSummaries];
+          if (allSummaries.length > 0) {
+            const firstSummary = allSummaries[0];
+            failureMessage =
+              firstSummary.message?._value || 
+              firstSummary.title?._value ||
+              'Test failed';
+          }
+        }
+
+        // Last fallback: check activity summaries
+        if (!failureMessage && validated.activitySummaries?._values) {
+          for (const activity of validated.activitySummaries._values) {
+            if (activity.title?._value && activity.title._value.includes('failed')) {
+              failureMessage = activity.title._value;
+              break;
+            }
+          }
+        }
+        
+        // Final fallback: if we still don't have a message but got test details, use generic message
+        if (!failureMessage) {
+          failureMessage = 'Test failed';
         }
       }
-    } catch {
-      // Continue with default values if detail fetch fails
+    } catch (error) {
+      // Continue without failure message if detail fetch fails
+      console.warn(`Failed to get failure details for ${name}:`, error);
+      // Don't set failureMessage if we can't get details
     }
   }
 
@@ -68,8 +119,6 @@ async function extractTestResult(
     name,
     status: status as 'Success' | 'Failure',
     duration,
-    file,
-    line,
     ...(failureMessage && { failureMessage }),
   };
 }
@@ -116,8 +165,8 @@ async function parseSuite(summary: TestableSummary, bundlePath: string): Promise
   const failed = allTests.filter((test) => test.status === 'Failure');
   const passed = allTests.filter((test) => test.status === 'Success');
 
-  // Calculate total duration
-  const duration = allTests.reduce((sum, test) => sum + test.duration, 0);
+  // Calculate total duration (ensure numeric values)
+  const duration = allTests.reduce((sum, test) => sum + (typeof test.duration === 'number' ? test.duration : 0), 0);
 
   return {
     suiteName,
@@ -127,21 +176,132 @@ async function parseSuite(summary: TestableSummary, bundlePath: string): Promise
   };
 }
 
+// Helper function to recursively extract test cases from new format
+function extractTestCases(node: NewTestNode): TestResult[] {
+  const results: TestResult[] = [];
+
+  if (node.nodeType === 'Test Case') {
+    // This is an actual test case
+    const duration = node.durationInSeconds ?? 0;
+    const status = node.result === 'Passed' ? 'Success' : 'Failure';
+
+    results.push({
+      name: node.name,
+      status,
+      duration,
+      failureMessage: node.result === 'Failed' ? `Test '${node.name}' failed` : undefined,
+    });
+  }
+
+  // Recursively process children
+  if (node.children) {
+    for (const child of node.children) {
+      results.push(...extractTestCases(child));
+    }
+  }
+
+  return results;
+}
+
+// Helper function to create suite results from new format
+function createSuiteFromNode(node: NewTestNode): SuiteResult[] {
+  const suites: SuiteResult[] = [];
+
+  if (node.nodeType === 'Test Suite') {
+    // Extract all test cases from this suite
+    const allTests = extractTestCases(node);
+    const passed = allTests.filter((test) => test.status === 'Success');
+    const failed = allTests.filter((test) => test.status === 'Failure');
+    const duration = allTests.reduce((sum, test) => sum + test.duration, 0);
+
+    suites.push({
+      suiteName: node.name,
+      duration,
+      failed,
+      passed,
+    });
+  } else if (node.children) {
+    // This is a container (like Test Plan, Unit test bundle), process children
+    for (const child of node.children) {
+      suites.push(...createSuiteFromNode(child));
+    }
+  }
+
+  return suites;
+}
+
+async function getLegacyTestDetails(bundlePath: string, testId: string): Promise<any> {
+  try {
+    const { stdout } = await execa('xcrun', [
+      'xcresulttool',
+      'get',
+      'object',
+      '--legacy',
+      '--path',
+      bundlePath,
+      '--id',
+      testId,
+      '--format',
+      'json',
+    ]);
+    return JSON.parse(stdout);
+  } catch (error: any) {
+    console.warn(`Warning: Failed to get legacy test details for ${testId}: ${error.message}`);
+    return null;
+  }
+}
+
 export async function parseXCResult(bundlePath: string): Promise<Report> {
-  // Get test summary
-  const summary = await getSummary(bundlePath);
-  const validated = validateAndLog(summary, 'test summary');
+  // For now, always use legacy format to get proper timing/location data
+  // The new format doesn't include duration, file, or line information
+  
+  try {
+    // Try to get legacy format data which has detailed timing info
+    const { execa } = await import('execa');
+    const { stdout } = await execa('xcrun', [
+      'xcresulttool', 'get', 'object', '--legacy', 
+      '--path', bundlePath, '--format', 'json'
+    ]);
+    const summary = JSON.parse(stdout);
+    
+    // Use legacy format parsing
+    return await parseLegacyFormat(summary, bundlePath);
+  } catch {
+    // Fallback to new format if legacy fails
+    const summary = await getSummary(bundlePath);
+    
+    if (summary.testNodes && Array.isArray(summary.testNodes)) {
+      return await parseNewFormat(summary, bundlePath);
+    }
+    
+    // Fallback to old format for test fixtures and older xcresult files
+    if (summary.issues?.testableSummaries?._values) {
+      return await parseOldFormat(summary, bundlePath);
+    }
+    
+    // Handle alternative data structures (actions-only path)
+    if (summary.actions?._values) {
+      return {
+        totalSuites: 0,
+        totalTests: 0,
+        totalDuration: 0,
+        suites: [],
+      };
+    }
+  }
+  
+  throw new Error('Unable to parse xcresult in any supported format');
+}
 
-  // Extract testable summaries
-  const testableSummaries =
-    validated.issues?.testableSummaries?._values ||
-    validated.actions?._values?.[0]?.actionResult?.testsRef?.id?._value ||
-    [];
+async function parseNewFormat(summary: any, _bundlePath: string): Promise<Report> {
+  // New format
+  const newData = summary as NewTestData;
+  const suites: SuiteResult[] = [];
 
-  // Parse each suite
-  const suites = await Promise.all(
-    testableSummaries.map((summary: TestableSummary) => parseSuite(summary, bundlePath))
-  );
+  // Process each test node
+  for (const testNode of newData.testNodes) {
+    suites.push(...createSuiteFromNode(testNode));
+  }
 
   // Calculate totals
   const totalSuites = suites.length;
@@ -157,4 +317,89 @@ export async function parseXCResult(bundlePath: string): Promise<Report> {
     totalDuration,
     suites,
   };
+}
+
+async function parseOldFormat(summary: any, bundlePath: string): Promise<Report> {
+  // Old format from test fixtures - uses issues.testableSummaries structure
+  const testSummaries = summary.issues?.testableSummaries?._values || [];
+  const suites: SuiteResult[] = [];
+  
+  for (const testableSummary of testSummaries) {
+    const suite = await parseSuite(testableSummary, bundlePath);
+    suites.push(suite);
+  }
+  
+  // Calculate totals
+  const totalSuites = suites.length;
+  const totalTests = suites.reduce(
+    (sum, suite) => sum + suite.failed.length + suite.passed.length,
+    0
+  );
+  const totalDuration = suites.reduce((sum, suite) => sum + suite.duration, 0);
+  
+  return {
+    totalSuites,
+    totalTests,
+    totalDuration,
+    suites,
+  };
+}
+
+async function parseLegacyFormat(summary: any, bundlePath: string): Promise<Report> {
+    // Legacy format - need to fetch detailed test data
+    const validated = validateAndLog(summary, 'test summary');
+
+    // Get action timing for total duration
+    const action = validated.actions?._values?.[0];
+    let totalActionDuration = 0;
+    if (action?.startedTime?._value && action?.endedTime?._value) {
+      const startTime = new Date(action.startedTime._value);
+      const endTime = new Date(action.endedTime._value);
+      totalActionDuration = (endTime.getTime() - startTime.getTime()) / 1000; // Convert to seconds
+    }
+
+    // Get the test reference ID  
+    const testsRef = action?.actionResult?.testsRef;
+    
+    if (!testsRef?.id?._value) {
+      // No tests found
+      return {
+        totalSuites: 0,
+        totalTests: 0,
+        totalDuration: totalActionDuration,
+        suites: [],
+      };
+    }
+
+    // Fetch detailed test data using the reference (force legacy format)
+    const testDetails = await getLegacyTestDetails(bundlePath, testsRef.id._value);
+    const testSummaries = testDetails?.summaries?._values || [];
+
+    // Parse each testable summary
+    const suites: SuiteResult[] = [];
+    for (const testSummary of testSummaries) {
+      if (testSummary.testableSummaries?._values) {
+        for (const testableSummary of testSummary.testableSummaries._values) {
+          const suite = await parseSuite(testableSummary, bundlePath);
+          suites.push(suite);
+        }
+      }
+    }
+
+    // Calculate totals
+    const totalSuites = suites.length;
+    const totalTests = suites.reduce(
+      (sum, suite) => sum + suite.failed.length + suite.passed.length,
+      0
+    );
+
+    // Use action duration as total duration since individual test timing isn't reliably available
+    const finalDuration = totalActionDuration;
+
+    return {
+      totalSuites,
+      totalTests,
+      totalDuration: finalDuration,
+      suites,
+    };
 }

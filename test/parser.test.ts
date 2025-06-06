@@ -7,23 +7,95 @@ import testDetailsFixture from './fixtures/test-details.json';
 
 jest.mock('../src/xcjson');
 jest.mock('../src/validator');
+jest.mock('execa');
 
 describe('parseXCResult', () => {
   const mockGetSummary = xcjson.getSummary as jest.Mock;
   const mockGetTestDetails = xcjson.getTestDetails as jest.Mock;
   const mockInitializeValidator = validator.initializeValidator as jest.Mock;
   const mockValidateAndLog = validator.validateAndLog as jest.Mock;
+  
+  // Mock execa for legacy format calls
+  const mockExeca = require('execa').execa as jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
     mockInitializeValidator.mockResolvedValue(undefined);
     mockValidateAndLog.mockImplementation((data) => data);
+    
+    // Setup default getSummary mock to return test fixture data
+    mockGetSummary.mockResolvedValue(simpleTestFixture);
+    mockGetTestDetails.mockResolvedValue(testDetailsFixture);
+    
+    // Mock execa to handle both legacy format calls and test detail calls
+    mockExeca.mockImplementation((_command: string, args: string[]) => {
+      // Fail the initial legacy format call to force fallback to getSummary
+      if (args.includes('--legacy') && !args.includes('--id')) {
+        return Promise.reject(new Error('xcresulttool legacy format not available'));
+      }
+      
+      // Allow test detail calls with --id to succeed with specific responses
+      if (args.includes('--id')) {
+        const idIndex = args.findIndex(arg => arg === '--id');
+        const testId = args[idIndex + 1];
+        
+        // Return different responses based on test ID
+        if (testId === 'subtest-failure-id') {
+          return Promise.resolve({
+            stdout: JSON.stringify({
+              failureSummaries: {
+                _values: [{
+                  message: { _value: 'Subtest assertion failed' }
+                }]
+              }
+            })
+          });
+        }
+        
+        if (testId === 'testfailuresummaries-id') {
+          return Promise.resolve({
+            stdout: JSON.stringify({
+              testFailureSummaries: {
+                _values: [{
+                  message: { _value: 'Test failure from testFailureSummaries' }
+                }]
+              }
+            })
+          });
+        }
+        
+        if (testId === 'target-failure-id') {
+          return Promise.resolve({
+            stdout: JSON.stringify({
+              summaries: {
+                _values: [{
+                  title: { _value: 'Target failure message' }
+                }]
+              }
+            })
+          });
+        }
+        
+        if (testId === 'no-message-id') {
+          return Promise.resolve({
+            stdout: JSON.stringify({
+              // No failure summaries - should get 'Test failed' fallback
+            })
+          });
+        }
+        
+        // Default to original test fixture
+        return Promise.resolve({
+          stdout: JSON.stringify(testDetailsFixture)
+        });
+      }
+      
+      // Default rejection for unexpected calls
+      return Promise.reject(new Error('Unexpected execa call'));
+    });
   });
 
   it('should parse a simple test result', async () => {
-    mockGetSummary.mockResolvedValue(simpleTestFixture);
-    mockGetTestDetails.mockResolvedValue(testDetailsFixture);
-
     const result = await parseXCResult('/path/to/test.xcresult');
 
     expect(result).toMatchObject<Report>({
@@ -39,8 +111,6 @@ describe('parseXCResult', () => {
               name: 'MyAppTests.testFailure',
               status: 'Failure',
               duration: 0.456,
-              file: '/Users/test/MyApp/MyAppTests.swift',
-              line: 42,
               failureMessage: 'XCTAssertEqual failed: ("1") is not equal to ("2")',
             },
           ],
@@ -49,8 +119,6 @@ describe('parseXCResult', () => {
               name: 'MyAppTests.testExample',
               status: 'Success',
               duration: 0.123,
-              file: 'Unknown',
-              line: 1,
             },
           ],
         },
@@ -59,8 +127,16 @@ describe('parseXCResult', () => {
   });
 
   it('should handle missing test details gracefully', async () => {
-    mockGetSummary.mockResolvedValue(simpleTestFixture);
-    mockGetTestDetails.mockResolvedValue(null);
+    // Override execa mock to fail test detail calls
+    mockExeca.mockImplementation((_command: string, args: string[]) => {
+      if (args.includes('--legacy') && !args.includes('--id')) {
+        return Promise.reject(new Error('xcresulttool legacy format not available'));
+      }
+      if (args.includes('--id')) {
+        return Promise.reject(new Error('Failed to get test details'));
+      }
+      return Promise.reject(new Error('Unexpected execa call'));
+    });
 
     const result = await parseXCResult('/path/to/test.xcresult');
 
@@ -68,9 +144,8 @@ describe('parseXCResult', () => {
       name: 'MyAppTests.testFailure',
       status: 'Failure',
       duration: 0.456,
-      file: 'Unknown',
-      line: 1,
     });
+    // Should not have failureMessage when details can't be fetched
     expect(result.suites[0].failed[0].failureMessage).toBeUndefined();
   });
 
@@ -346,45 +421,56 @@ describe('parseXCResult', () => {
   });
 
   it('should handle failure with testFailureSummaries instead of summaries', async () => {
-    mockGetSummary.mockResolvedValue(simpleTestFixture);
-    mockGetTestDetails.mockResolvedValue({
-      testFailureSummaries: {
-        _values: [{
-          message: {
-            _value: "Test failure from testFailureSummaries"
-          }
-        }]
-      },
-      location: {
-        _value: {
-          fileName: {
-            _value: "/path/to/TestFile.swift"
-          },
-          lineNumber: {
-            _value: 50
-          }
+    const customFixture = {
+      issues: {
+        testableSummaries: {
+          _values: [{
+            name: { _value: 'MyAppTests' },
+            tests: {
+              _values: [{
+                identifier: { _value: 'MyAppTests.testFailure' },
+                testStatus: { _value: 'Failure' },
+                duration: { _value: 0.456 },
+                summaryRef: {
+                  id: { _value: 'testfailuresummaries-id' }
+                }
+              }]
+            }
+          }]
         }
       }
-    });
+    };
+    
+    mockGetSummary.mockResolvedValue(customFixture);
 
     const result = await parseXCResult('/path/to/test.xcresult');
 
     expect(result.suites[0].failed[0].failureMessage).toBe('Test failure from testFailureSummaries');
-    expect(result.suites[0].failed[0].file).toBe('/path/to/TestFile.swift');
-    expect(result.suites[0].failed[0].line).toBe(50);
+    // File and line information removed from output format
   });
 
   it('should handle failure with producingTarget fallback message', async () => {
-    mockGetSummary.mockResolvedValue(simpleTestFixture);
-    mockGetTestDetails.mockResolvedValue({
-      summaries: {
-        _values: [{
-          producingTarget: {
-            _value: "Target failure message"
-          }
-        }]
+    const customFixture = {
+      issues: {
+        testableSummaries: {
+          _values: [{
+            name: { _value: 'MyAppTests' },
+            tests: {
+              _values: [{
+                identifier: { _value: 'MyAppTests.testFailure' },
+                testStatus: { _value: 'Failure' },
+                duration: { _value: 0.456 },
+                summaryRef: {
+                  id: { _value: 'target-failure-id' }
+                }
+              }]
+            }
+          }]
+        }
       }
-    });
+    };
+    
+    mockGetSummary.mockResolvedValue(customFixture);
 
     const result = await parseXCResult('/path/to/test.xcresult');
 
@@ -392,12 +478,27 @@ describe('parseXCResult', () => {
   });
 
   it('should handle failure with no specific message', async () => {
-    mockGetSummary.mockResolvedValue(simpleTestFixture);
-    mockGetTestDetails.mockResolvedValue({
-      summaries: {
-        _values: [{}]
+    const customFixture = {
+      issues: {
+        testableSummaries: {
+          _values: [{
+            name: { _value: 'MyAppTests' },
+            tests: {
+              _values: [{
+                identifier: { _value: 'MyAppTests.testFailure' },
+                testStatus: { _value: 'Failure' },
+                duration: { _value: 0.456 },
+                summaryRef: {
+                  id: { _value: 'no-message-id' }
+                }
+              }]
+            }
+          }]
+        }
       }
-    });
+    };
+    
+    mockGetSummary.mockResolvedValue(customFixture);
 
     const result = await parseXCResult('/path/to/test.xcresult');
 

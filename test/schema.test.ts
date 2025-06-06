@@ -23,7 +23,7 @@ describe('schema', () => {
     it('should fetch and save schema to file', async () => {
       const mockSchema = { type: 'object', properties: {} };
       mockGetSchema.mockResolvedValueOnce(mockSchema);
-      const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 
       await fetchAndSaveSchema();
 
@@ -36,11 +36,11 @@ describe('schema', () => {
         expect.stringContaining('tests.json'),
         JSON.stringify(mockSchema, null, 2)
       );
-      expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
         expect.stringContaining('Schema saved to')
       );
 
-      consoleLogSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
     });
 
     it('should propagate errors', async () => {
@@ -80,18 +80,18 @@ describe('schema', () => {
         .mockResolvedValueOnce(JSON.stringify(mockSchema));
       mockGetSchema.mockResolvedValueOnce(mockSchema);
       
-      const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 
       const result = await loadSchema();
 
       expect(result).toEqual(mockSchema);
       expect(mockGetSchema).toHaveBeenCalledWith('tests');
       expect(mockFs.writeFile).toHaveBeenCalled();
-      expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
         'Schema file not found, fetching from xcresulttool...'
       );
 
-      consoleLogSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
     });
   });
 
@@ -111,17 +111,17 @@ describe('schema', () => {
       mockGetSchema.mockRejectedValueOnce(new Error('Network error'));
       mockFs.readFile.mockResolvedValueOnce(JSON.stringify(cachedSchema));
       
-      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 
       const result = await getLiveSchema();
 
       expect(result).toEqual(cachedSchema);
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
         expect.stringContaining('Failed to get live schema'),
         expect.stringContaining('Network error')
       );
 
-      consoleWarnSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
     });
   });
 });

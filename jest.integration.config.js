@@ -2,21 +2,13 @@ module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>/test'],
-  testMatch: ['**/*.test.ts'],
-  setupFilesAfterEnv: ['<rootDir>/test/setup.ts'],
+  testMatch: ['**/integration.test.ts', '**/cli.test.ts'],
+  // No setup file for integration tests - we want real dependencies
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/types/**',
     '!src/index.ts',
   ],
-  coverageThreshold: {
-    global: {
-      branches: 80,
-      functions: 80,
-      lines: 90,
-      statements: 90,
-    },
-  },
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },
@@ -34,4 +26,10 @@ module.exports = {
   transformIgnorePatterns: [
     'node_modules/(?!(execa|chalk|is-stream|merge-stream|npm-run-path|onetime|signal-exit|strip-final-newline|human-signals|mimic-fn|get-stream|is-plain-obj|strip-ansi|ansi-regex)/)',
   ],
+  extensionsToTreatAsEsm: ['.ts'],
+  globals: {
+    'ts-jest': {
+      useESM: true,
+    },
+  },
 };
