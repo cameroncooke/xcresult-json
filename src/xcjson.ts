@@ -41,7 +41,7 @@ async function checkCapabilities(): Promise<{
 
     // Check main help to see available commands
     const { stdout: mainHelp } = await execa('xcrun', ['xcresulttool', '--help']);
-    
+
     let supportsTestReport = false;
     let supportsObject = false;
     let commandFormat: 'modern' | 'legacy' | 'basic' = 'basic';
@@ -87,7 +87,7 @@ async function checkCapabilities(): Promise<{
 export async function getSchema(subcommand: string): Promise<any> {
   try {
     const { supportsTestReport } = await checkCapabilities();
-    
+
     let args: string[];
     if (supportsTestReport) {
       // Modern format: test-results supports subcommands like 'tests'
@@ -127,18 +127,17 @@ export async function getSchema(subcommand: string): Promise<any> {
 
     // Extract JSON text and clean up any trailing whitespace
     const jsonString = stdout.substring(jsonStart, usageStart).trim();
-    
+
     try {
       return JSON.parse(jsonString);
-    } catch (parseError: any) {
+    } catch {
       // If JSON parsing fails, the string might have unescaped newlines in descriptions
       // Handle the specific case where Apple's xcresulttool outputs malformed JSON with embedded newlines
-      const fixedJsonString = jsonString
-        .replace(
-          /"Human-readable duration with optional\ncomponents of days, hours, minutes and seconds"/g,
-          '"Human-readable duration with optional\\ncomponents of days, hours, minutes and seconds"'
-        );
-      
+      const fixedJsonString = jsonString.replace(
+        /"Human-readable duration with optional\ncomponents of days, hours, minutes and seconds"/g,
+        '"Human-readable duration with optional\\ncomponents of days, hours, minutes and seconds"'
+      );
+
       try {
         return JSON.parse(fixedJsonString);
       } catch {
