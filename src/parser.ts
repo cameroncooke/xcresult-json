@@ -1,7 +1,6 @@
 import { getSummary, getTestDetails } from './xcjson.js';
 import { validateAndLog } from './validator.js';
 import { Report, SuiteResult, TestResult } from './types/report.js';
-import { execa } from 'execa';
 
 // New xcresulttool format structures
 interface NewTestNode {
@@ -230,7 +229,6 @@ function createSuiteFromNode(node: NewTestNode): SuiteResult[] {
 
   return suites;
 }
-
 
 export async function parseXCResult(bundlePath: string): Promise<Report> {
   // For now, always use legacy format to get proper timing/location data

@@ -29,14 +29,14 @@ async function checkCapabilities(): Promise<{
     return {
       supportsTestReport: cache.supportsTestReport!,
       supportsObject: cache.supportsObject!,
-      commandFormat: cache.commandFormat
+      commandFormat: cache.commandFormat,
     };
   }
 
   try {
     // Check main help to see available commands
     const { stdout: mainHelp } = await execa('xcrun', ['xcresulttool', '--help']);
-    
+
     // Try to get help for 'get' command
     let getHelp = '';
     try {
@@ -49,7 +49,7 @@ async function checkCapabilities(): Promise<{
     // Determine capabilities
     const supportsTestReport = getHelp.includes('test-results');
     const supportsObject = getHelp.includes('object') || mainHelp.includes('object');
-    
+
     let commandFormat: 'modern' | 'legacy' | 'basic';
     if (supportsTestReport) {
       commandFormat = 'modern';
@@ -64,7 +64,7 @@ async function checkCapabilities(): Promise<{
     cache.commandFormat = commandFormat;
 
     return { supportsTestReport, supportsObject, commandFormat };
-  } catch (error: any) {
+  } catch {
     throw new XcjsonError(
       'Failed to run xcresulttool. Ensure Xcode is installed.',
       'XCRESULTTOOL_NOT_FOUND',
@@ -144,15 +144,24 @@ export async function getSummary(bundlePath: string): Promise<any> {
   }
 
   try {
-    const { supportsTestReport, supportsObject, commandFormat } = await checkCapabilities();
-    
+    const { supportsTestReport, supportsObject } = await checkCapabilities();
+
     let args: string[];
     if (supportsTestReport) {
       // Modern format: test-results
       args = ['xcresulttool', 'get', 'test-results', 'tests', '--path', bundlePath];
     } else if (supportsObject) {
       // Legacy format: object with --legacy flag
-      args = ['xcresulttool', 'get', 'object', '--legacy', '--path', bundlePath, '--format', 'json'];
+      args = [
+        'xcresulttool',
+        'get',
+        'object',
+        '--legacy',
+        '--path',
+        bundlePath,
+        '--format',
+        'json',
+      ];
     } else {
       // Very old format: try basic object command
       args = ['xcresulttool', 'get', '--path', bundlePath, '--format', 'json'];
@@ -193,8 +202,8 @@ export async function getTestDetails(bundlePath: string, testId: string): Promis
   }
 
   try {
-    const { supportsTestReport, supportsObject, commandFormat } = await checkCapabilities();
-    
+    const { supportsTestReport, supportsObject } = await checkCapabilities();
+
     let args: string[];
     if (supportsTestReport) {
       // Modern format: test-results test-details
@@ -224,16 +233,7 @@ export async function getTestDetails(bundlePath: string, testId: string): Promis
       ];
     } else {
       // Very old format: try basic get command
-      args = [
-        'xcresulttool',
-        'get',
-        '--path',
-        bundlePath,
-        '--id',
-        testId,
-        '--format',
-        'json',
-      ];
+      args = ['xcresulttool', 'get', '--path', bundlePath, '--id', testId, '--format', 'json'];
     }
 
     const { stdout } = await execa('xcrun', args);
