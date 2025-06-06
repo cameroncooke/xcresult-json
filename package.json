@@ -9,6 +9,10 @@
     "build": "tsup",
     "build:types": "tsx scripts/generate-types.ts",
     "test": "jest",
+    "test:unit": "jest --selectProjects unit",
+    "test:integration": "jest --config jest.integration.config.js",
+    "test:coverage": "jest --coverage",
+    "test:all": "npm run test:unit && npm run test:integration",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"

@@ -7,7 +7,7 @@ import { readFileSync } from 'fs';
 import { execa } from 'execa';
 import { XCResultDataSource, DataSourceOptions } from '../core/interfaces.js';
 import { XCResultError } from '../core/errors.js';
-import { LRUCache } from '../utils/cache.js';
+import { LRUCache } from '../cache.js';
 
 /**
  * xcresulttool-based data source implementation
@@ -92,7 +92,7 @@ export class XCResultToolDataSource implements XCResultDataSource {
     if (capabilities.supportsTestResults) {
       try {
         const { stdout } = await execa('xcrun', [
-          'xcresulttool', 'get', 'test-results', 
+          'xcresulttool', 'get', 'test-results', 'summary',
           '--path', bundlePath, 
           '--format', 'json'
         ]);

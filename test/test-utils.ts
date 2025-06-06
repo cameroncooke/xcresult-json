@@ -5,8 +5,7 @@
 
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { parseXCResult } from '../src/parser.js';
-import { parserRegistry } from '../src/formats/registry.js';
+import { parseXCResult } from '../src/api.js';
 
 /**
  * Load a JSON fixture file for testing
@@ -21,7 +20,8 @@ export function loadJsonFixture(filename: string): any {
  * This is for unit testing parsers without requiring real xcresult bundles
  */
 export async function testParserWithJsonData(jsonData: any, bundlePath = '/test'): Promise<any> {
-  return await parserRegistry.parse(bundlePath, jsonData);
+  // This function is deprecated - use API tests instead
+  throw new Error('testParserWithJsonData is deprecated - use parseXCResult from api.js');
 }
 
 /**

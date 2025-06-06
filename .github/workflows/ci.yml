@@ -1,4 +1,4 @@
-name: CI - Main
+name: CI
 
 on:
   push:
@@ -7,7 +7,9 @@ on:
     branches: [main]
 
 jobs:
+  # Core tests with latest Xcode
   test:
+    name: Core Tests (Latest Xcode)
     runs-on: macos-15
     
     steps:
@@ -15,10 +17,7 @@ jobs:
       
       - name: Select Latest Xcode
         run: |
-          # List available Xcode versions
-          ls -la /Applications | grep Xcode || true
-          
-          # Select the latest available Xcode (try 16.2 first, then fallback)
+          # Select the latest available Xcode 
           if [ -d "/Applications/Xcode_16.2.app" ]; then
             sudo xcode-select -s /Applications/Xcode_16.2.app
           elif [ -d "/Applications/Xcode_16.1.app" ]; then
@@ -29,9 +28,9 @@ jobs:
             sudo xcode-select -s /Applications/Xcode.app
           fi
           
-          # Verify Xcode selection
-          echo "Selected Xcode path: $(xcode-select -p)"
+          echo "Selected Xcode: $(xcode-select -p)"
           xcodebuild -version
+          xcrun xcresulttool version
       
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -51,28 +50,16 @@ jobs:
       - name: Build
         run: npm run build
       
-      - name: Debug xcresulttool version and capabilities
+      - name: Run Core Unit Tests
         run: |
-          xcrun xcresulttool version
-          xcrun xcresulttool --help
-      
-      - name: Test Core Components with JSON Fixtures
-        run: |
-          # Run all core tests with coverage (excluding CLI tests that require real xcresult bundles)
-          npm test test/xcjson.test.ts test/validator.test.ts test/formats.test.ts test/cache.test.ts test/schema.test.ts -- --coverage
+          # Run core component tests with coverage
+          npm test test/unit/ test/cache.test.ts test/validator.test.ts test/schema.test.ts -- --coverage
           
-      - name: Test Format Abstraction
-        run: |
-          echo "Testing format parser registry"
-          node -e "console.log('Format abstraction loaded successfully')" || echo "Format abstraction test completed"
-      
       - name: Test CLI Help
-        run: |
-          node dist/index.js --help
+        run: node dist/index.js --help
           
       - name: Test with JSON Fixture
         run: |
-          echo "Testing CLI with JSON fixture"
           # Exit code 10 is expected when tests fail (our fixture has intentional failures)
           node dist/index.js --path test/fixtures/simple-test.json --pretty || (echo "CLI exited with code $? (expected for test failures)" && exit 0)
           
@@ -80,3 +67,192 @@ jobs:
         uses: codecov/codecov-action@v3
         with:
           files: ./coverage/lcov.info
+
+  # Cross-version compatibility testing with xcresult generation
+  compatibility:
+    name: Xcode ${{ matrix.xcode }} Compatibility
+    runs-on: macos-15
+    strategy:
+      matrix:
+        include:
+          - xcode: "16.2"
+            path: "/Applications/Xcode_16.2.app"
+            format: "xcode16"
+          - xcode: "16.1" 
+            path: "/Applications/Xcode_16.1.app"
+            format: "xcode16"
+          - xcode: "16.0"
+            path: "/Applications/Xcode_16.0.app"  
+            format: "xcode16"
+          - xcode: "15.4"
+            path: "/Applications/Xcode_15.4.app"
+            format: "xcode15"
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Select Xcode ${{ matrix.xcode }}
+        run: |
+          if [ -d "${{ matrix.path }}" ]; then
+            sudo xcode-select -s "${{ matrix.path }}"
+            echo "Selected Xcode ${{ matrix.xcode }}: $(xcode-select -p)"
+            xcodebuild -version
+            xcrun xcresulttool version
+          else
+            echo "Xcode ${{ matrix.xcode }} not available, skipping"
+            exit 0
+          fi
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build
+        run: npm run build
+      
+      - name: Generate xcresult Bundle
+        run: |
+          if [ -d "${{ matrix.path }}" ]; then
+            echo "Generating xcresult bundle with Xcode ${{ matrix.xcode }}"
+            cd example_project
+            
+            # Clean previous builds
+            xcodebuild clean -workspace CalculatorApp.xcworkspace -scheme CalculatorApp
+            
+            # Run tests and generate xcresult
+            set +e  # Don't fail on test failures
+            xcodebuild test \
+              -workspace CalculatorApp.xcworkspace \
+              -scheme CalculatorApp \
+              -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+              -resultBundlePath "../test/fixtures/xcode${{ matrix.xcode }}-result.xcresult" \
+              -derivedDataPath build
+            
+            echo "Test run completed with exit code $?"
+            set -e
+            
+            # Verify bundle was created
+            if [ -d "../test/fixtures/xcode${{ matrix.xcode }}-result.xcresult" ]; then
+              echo "✅ Generated xcresult bundle for Xcode ${{ matrix.xcode }}"
+              ls -la "../test/fixtures/xcode${{ matrix.xcode }}-result.xcresult"
+            else
+              echo "❌ Failed to generate xcresult bundle"
+              exit 1
+            fi
+          else
+            echo "Skipping - Xcode ${{ matrix.xcode }} not available"
+          fi
+      
+      - name: Test CLI with Generated Bundle
+        run: |
+          if [ -d "${{ matrix.path }}" ] && [ -d "test/fixtures/xcode${{ matrix.xcode }}-result.xcresult" ]; then
+            echo "Testing CLI with Xcode ${{ matrix.xcode }} bundle"
+            
+            # Test the CLI - expect exit code 10 due to intentional test failures
+            set +e
+            node dist/index.js --path "test/fixtures/xcode${{ matrix.xcode }}-result.xcresult" --pretty > "xcode${{ matrix.xcode }}-output.json"
+            exit_code=$?
+            set -e
+            
+            echo "CLI exited with code: $exit_code"
+            
+            # Verify output contains expected structure
+            if grep -q '"totalSuites"' "xcode${{ matrix.xcode }}-output.json"; then
+              echo "✅ CLI successfully parsed xcresult bundle"
+              echo "Preview of output:"
+              head -20 "xcode${{ matrix.xcode }}-output.json"
+            else
+              echo "❌ CLI failed to parse xcresult bundle"
+              cat "xcode${{ matrix.xcode }}-output.json"
+              exit 1
+            fi
+          else
+            echo "Skipping CLI test - bundle not available"
+          fi
+      
+      - name: Upload xcresult Artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xcresult-xcode${{ matrix.xcode }}
+          path: |
+            test/fixtures/xcode${{ matrix.xcode }}-result.xcresult/
+            xcode${{ matrix.xcode }}-output.json
+          retention-days: 30
+
+  # Integration tests with real bundles
+  integration:
+    name: Integration Tests
+    runs-on: macos-15
+    needs: [test, compatibility]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Select Latest Xcode
+        run: |
+          if [ -d "/Applications/Xcode_16.2.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_16.2.app
+          elif [ -d "/Applications/Xcode_16.1.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_16.1.app
+          elif [ -d "/Applications/Xcode_16.0.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_16.0.app
+          else
+            sudo xcode-select -s /Applications/Xcode.app
+          fi
+          xcodebuild -version
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build
+        run: npm run build
+      
+      - name: Download xcresult Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: xcresult-*
+          path: artifacts/
+          merge-multiple: true
+      
+      - name: Run Integration Tests
+        run: |
+          echo "Running integration tests with real xcresult bundles"
+          
+          # Test all available xcresult bundles
+          for bundle in artifacts/test/fixtures/*.xcresult; do
+            if [ -d "$bundle" ]; then
+              echo "Testing bundle: $bundle"
+              
+              # Run CLI and verify basic structure
+              set +e
+              node dist/index.js --path "$bundle" > output.json
+              exit_code=$?
+              set -e
+              
+              echo "Exit code: $exit_code"
+              
+              # Verify JSON structure
+              if jq -e '.totalSuites' output.json > /dev/null; then
+                echo "✅ Bundle $bundle parsed successfully"
+              else
+                echo "❌ Bundle $bundle failed to parse"
+                echo "Output:"
+                cat output.json
+                exit 1
+              fi
+            fi
+          done
+          
+          echo "✅ All integration tests passed"

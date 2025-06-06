@@ -3,13 +3,8 @@ export default {
   extensionsToTreatAsEsm: ['.ts'],
   testEnvironment: 'node',
   roots: ['<rootDir>/test'],
-  testMatch: ['**/integration.test.ts', '**/cli.test.ts'],
-  // No setup file for integration tests - we want real dependencies
-  collectCoverageFrom: [
-    'src/**/*.ts',
-    '!src/types/**',
-    '!src/index.ts',
-  ],
+  testMatch: ['**/integration/**/*.test.ts'],
+  setupFilesAfterEnv: ['<rootDir>/test/setup.ts'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },
@@ -28,4 +23,8 @@ export default {
   transformIgnorePatterns: [
     'node_modules/(?!(execa|chalk|is-stream|merge-stream|npm-run-path|onetime|signal-exit|strip-final-newline|human-signals|mimic-fn|get-stream|is-plain-obj|strip-ansi|ansi-regex)/)',
   ],
+  // Integration tests can take longer and work with real files
+  testTimeout: 120000,
+  // Don't collect coverage for integration tests - they test the public API
+  collectCoverage: false,
 };

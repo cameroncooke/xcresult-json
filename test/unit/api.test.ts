@@ -65,7 +65,14 @@ describe('Public API', () => {
     });
 
     it('should handle parse options correctly', async () => {
-      const mockData = { testNodes: [] };
+      // Use valid legacy format data
+      const mockData = {
+        issues: {
+          testableSummaries: {
+            _values: []
+          }
+        }
+      };
       const { XCResultToolDataSource } = await import('../../src/infrastructure/xcresulttool-data-source.js');
       
       let capturedOptions: any;
@@ -86,7 +93,14 @@ describe('Public API', () => {
     });
 
     it('should use default options when none provided', async () => {
-      const mockData = { testNodes: [] };
+      // Use valid legacy format data
+      const mockData = {
+        issues: {
+          testableSummaries: {
+            _values: []
+          }
+        }
+      };
       const { XCResultToolDataSource } = await import('../../src/infrastructure/xcresulttool-data-source.js');
       
       let capturedOptions: any;
