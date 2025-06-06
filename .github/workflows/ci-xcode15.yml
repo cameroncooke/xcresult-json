@@ -71,7 +71,7 @@ jobs:
       - name: Test Core Components
         run: |
           # Run tests for core components with coverage
-          npm test test/xcjson.test.ts test/validator.test.ts test/parser.test.ts test/cache.test.ts test/schema.test.ts test/cli-json.test.ts -- --coverage
+          npm test test/xcjson.test.ts test/validator.test.ts test/formats.test.ts test/cache.test.ts test/schema.test.ts -- --coverage
           
       - name: Test CLI Schema Command
         run: |
@@ -145,7 +145,7 @@ jobs:
           fi
       
       - name: Upload Xcode 15 Test Fixtures
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: xcode15-fixtures
