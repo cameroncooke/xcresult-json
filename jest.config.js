@@ -1,5 +1,6 @@
-module.exports = {
-  preset: 'ts-jest',
+export default {
+  preset: 'ts-jest/presets/default-esm',
+  extensionsToTreatAsEsm: ['.ts'],
   testEnvironment: 'node',
   roots: ['<rootDir>/test'],
   testMatch: ['**/*.test.ts'],
@@ -24,6 +25,7 @@ module.exports = {
     '^.+\\.tsx?$': [
       'ts-jest',
       {
+        useESM: true,
         tsconfig: {
           allowJs: true,
           esModuleInterop: true,

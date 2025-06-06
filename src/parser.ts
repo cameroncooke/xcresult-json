@@ -72,7 +72,7 @@ async function extractTestResult(
 
         // Extract failure message from failureSummaries (the correct location)
         const failureSummaries = validated.failureSummaries?._values || [];
-        
+
         if (failureSummaries.length > 0) {
           const firstFailure = failureSummaries[0];
           failureMessage = firstFailure.message?._value || 'Test failed';
@@ -82,14 +82,12 @@ async function extractTestResult(
         if (!failureMessage) {
           const summaries = validated.summaries?._values || [];
           const testFailureSummaries = validated.testFailureSummaries?._values || [];
-          
+
           const allSummaries = [...summaries, ...testFailureSummaries];
           if (allSummaries.length > 0) {
             const firstSummary = allSummaries[0];
             failureMessage =
-              firstSummary.message?._value || 
-              firstSummary.title?._value ||
-              'Test failed';
+              firstSummary.message?._value || firstSummary.title?._value || 'Test failed';
           }
         }
 
@@ -102,7 +100,7 @@ async function extractTestResult(
             }
           }
         }
-        
+
         // Final fallback: if we still don't have a message but got test details, use generic message
         if (!failureMessage) {
           failureMessage = 'Test failed';
@@ -166,7 +164,10 @@ async function parseSuite(summary: TestableSummary, bundlePath: string): Promise
   const passed = allTests.filter((test) => test.status === 'Success');
 
   // Calculate total duration (ensure numeric values)
-  const duration = allTests.reduce((sum, test) => sum + (typeof test.duration === 'number' ? test.duration : 0), 0);
+  const duration = allTests.reduce(
+    (sum, test) => sum + (typeof test.duration === 'number' ? test.duration : 0),
+    0
+  );
 
   return {
     suiteName,
@@ -254,31 +255,37 @@ async function getLegacyTestDetails(bundlePath: string, testId: string): Promise
 export async function parseXCResult(bundlePath: string): Promise<Report> {
   // For now, always use legacy format to get proper timing/location data
   // The new format doesn't include duration, file, or line information
-  
+
   try {
     // Try to get legacy format data which has detailed timing info
     const { execa } = await import('execa');
     const { stdout } = await execa('xcrun', [
-      'xcresulttool', 'get', 'object', '--legacy', 
-      '--path', bundlePath, '--format', 'json'
+      'xcresulttool',
+      'get',
+      'object',
+      '--legacy',
+      '--path',
+      bundlePath,
+      '--format',
+      'json',
     ]);
     const summary = JSON.parse(stdout);
-    
+
     // Use legacy format parsing
     return await parseLegacyFormat(summary, bundlePath);
   } catch {
     // Fallback to new format if legacy fails
     const summary = await getSummary(bundlePath);
-    
+
     if (summary.testNodes && Array.isArray(summary.testNodes)) {
       return await parseNewFormat(summary, bundlePath);
     }
-    
+
     // Fallback to old format for test fixtures and older xcresult files
     if (summary.issues?.testableSummaries?._values) {
       return await parseOldFormat(summary, bundlePath);
     }
-    
+
     // Handle alternative data structures (actions-only path)
     if (summary.actions?._values) {
       return {
@@ -289,7 +296,7 @@ export async function parseXCResult(bundlePath: string): Promise<Report> {
       };
     }
   }
-  
+
   throw new Error('Unable to parse xcresult in any supported format');
 }
 
@@ -323,12 +330,12 @@ async function parseOldFormat(summary: any, bundlePath: string): Promise<Report>
   // Old format from test fixtures - uses issues.testableSummaries structure
   const testSummaries = summary.issues?.testableSummaries?._values || [];
   const suites: SuiteResult[] = [];
-  
+
   for (const testableSummary of testSummaries) {
     const suite = await parseSuite(testableSummary, bundlePath);
     suites.push(suite);
   }
-  
+
   // Calculate totals
   const totalSuites = suites.length;
   const totalTests = suites.reduce(
@@ -336,7 +343,7 @@ async function parseOldFormat(summary: any, bundlePath: string): Promise<Report>
     0
   );
   const totalDuration = suites.reduce((sum, suite) => sum + suite.duration, 0);
-  
+
   return {
     totalSuites,
     totalTests,
@@ -346,60 +353,60 @@ async function parseOldFormat(summary: any, bundlePath: string): Promise<Report>
 }
 
 async function parseLegacyFormat(summary: any, bundlePath: string): Promise<Report> {
-    // Legacy format - need to fetch detailed test data
-    const validated = validateAndLog(summary, 'test summary');
+  // Legacy format - need to fetch detailed test data
+  const validated = validateAndLog(summary, 'test summary');
 
-    // Get action timing for total duration
-    const action = validated.actions?._values?.[0];
-    let totalActionDuration = 0;
-    if (action?.startedTime?._value && action?.endedTime?._value) {
-      const startTime = new Date(action.startedTime._value);
-      const endTime = new Date(action.endedTime._value);
-      totalActionDuration = (endTime.getTime() - startTime.getTime()) / 1000; // Convert to seconds
-    }
+  // Get action timing for total duration
+  const action = validated.actions?._values?.[0];
+  let totalActionDuration = 0;
+  if (action?.startedTime?._value && action?.endedTime?._value) {
+    const startTime = new Date(action.startedTime._value);
+    const endTime = new Date(action.endedTime._value);
+    totalActionDuration = (endTime.getTime() - startTime.getTime()) / 1000; // Convert to seconds
+  }
 
-    // Get the test reference ID  
-    const testsRef = action?.actionResult?.testsRef;
-    
-    if (!testsRef?.id?._value) {
-      // No tests found
-      return {
-        totalSuites: 0,
-        totalTests: 0,
-        totalDuration: totalActionDuration,
-        suites: [],
-      };
-    }
+  // Get the test reference ID
+  const testsRef = action?.actionResult?.testsRef;
 
-    // Fetch detailed test data using the reference (force legacy format)
-    const testDetails = await getLegacyTestDetails(bundlePath, testsRef.id._value);
-    const testSummaries = testDetails?.summaries?._values || [];
+  if (!testsRef?.id?._value) {
+    // No tests found
+    return {
+      totalSuites: 0,
+      totalTests: 0,
+      totalDuration: totalActionDuration,
+      suites: [],
+    };
+  }
 
-    // Parse each testable summary
-    const suites: SuiteResult[] = [];
-    for (const testSummary of testSummaries) {
-      if (testSummary.testableSummaries?._values) {
-        for (const testableSummary of testSummary.testableSummaries._values) {
-          const suite = await parseSuite(testableSummary, bundlePath);
-          suites.push(suite);
-        }
+  // Fetch detailed test data using the reference (force legacy format)
+  const testDetails = await getLegacyTestDetails(bundlePath, testsRef.id._value);
+  const testSummaries = testDetails?.summaries?._values || [];
+
+  // Parse each testable summary
+  const suites: SuiteResult[] = [];
+  for (const testSummary of testSummaries) {
+    if (testSummary.testableSummaries?._values) {
+      for (const testableSummary of testSummary.testableSummaries._values) {
+        const suite = await parseSuite(testableSummary, bundlePath);
+        suites.push(suite);
       }
     }
+  }
 
-    // Calculate totals
-    const totalSuites = suites.length;
-    const totalTests = suites.reduce(
-      (sum, suite) => sum + suite.failed.length + suite.passed.length,
-      0
-    );
+  // Calculate totals
+  const totalSuites = suites.length;
+  const totalTests = suites.reduce(
+    (sum, suite) => sum + suite.failed.length + suite.passed.length,
+    0
+  );
 
-    // Use action duration as total duration since individual test timing isn't reliably available
-    const finalDuration = totalActionDuration;
+  // Use action duration as total duration since individual test timing isn't reliably available
+  const finalDuration = totalActionDuration;
 
-    return {
-      totalSuites,
-      totalTests,
-      totalDuration: finalDuration,
-      suites,
-    };
+  return {
+    totalSuites,
+    totalTests,
+    totalDuration: finalDuration,
+    suites,
+  };
 }

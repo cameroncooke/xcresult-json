@@ -1,5 +1,6 @@
-module.exports = {
-  preset: 'ts-jest',
+export default {
+  preset: 'ts-jest/presets/default-esm',
+  extensionsToTreatAsEsm: ['.ts'],
   testEnvironment: 'node',
   roots: ['<rootDir>/test'],
   testMatch: ['**/integration.test.ts', '**/cli.test.ts'],
@@ -16,6 +17,7 @@ module.exports = {
     '^.+\\.tsx?$': [
       'ts-jest',
       {
+        useESM: true,
         tsconfig: {
           allowJs: true,
           esModuleInterop: true,
@@ -26,10 +28,4 @@ module.exports = {
   transformIgnorePatterns: [
     'node_modules/(?!(execa|chalk|is-stream|merge-stream|npm-run-path|onetime|signal-exit|strip-final-newline|human-signals|mimic-fn|get-stream|is-plain-obj|strip-ansi|ansi-regex)/)',
   ],
-  extensionsToTreatAsEsm: ['.ts'],
-  globals: {
-    'ts-jest': {
-      useESM: true,
-    },
-  },
 };
