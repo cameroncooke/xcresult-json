@@ -34,28 +34,39 @@ async function checkCapabilities(): Promise<{
   }
 
   try {
+    // Get version to determine capabilities based on known version differences
+    const { stdout: versionOutput } = await execa('xcrun', ['xcresulttool', 'version']);
+    const versionMatch = versionOutput.match(/version (\d+)/);
+    const version = versionMatch ? parseInt(versionMatch[1]) : 0;
+
     // Check main help to see available commands
     const { stdout: mainHelp } = await execa('xcrun', ['xcresulttool', '--help']);
+    
+    let supportsTestReport = false;
+    let supportsObject = false;
+    let commandFormat: 'modern' | 'legacy' | 'basic' = 'basic';
 
-    // Try to get help for 'get' command
-    let getHelp = '';
-    try {
-      const { stdout } = await execa('xcrun', ['xcresulttool', 'get', '--help']);
-      getHelp = stdout;
-    } catch {
-      // 'get' command may not exist in older versions
-    }
-
-    // Determine capabilities
-    const supportsTestReport = getHelp.includes('test-results');
-    const supportsObject = getHelp.includes('object') || mainHelp.includes('object');
-
-    let commandFormat: 'modern' | 'legacy' | 'basic';
-    if (supportsTestReport) {
-      commandFormat = 'modern';
-    } else if (supportsObject) {
-      commandFormat = 'legacy';
+    if (version >= 23000) {
+      // Modern versions (23000+) - has get subcommands like 'test-results' and 'object'
+      try {
+        const { stdout: getHelp } = await execa('xcrun', ['xcresulttool', 'get', '--help']);
+        supportsTestReport = getHelp.includes('test-results');
+        supportsObject = getHelp.includes('object');
+        commandFormat = supportsTestReport ? 'modern' : 'legacy';
+      } catch {
+        // Fallback if get command structure is different
+        supportsObject = mainHelp.includes('get');
+        commandFormat = 'basic';
+      }
+    } else if (version >= 22000) {
+      // Older versions (22000-22999) - 'get' is a direct command, no subcommands
+      // These versions don't support 'get object --legacy' syntax
+      supportsObject = mainHelp.includes('get');
+      supportsTestReport = false; // test-results not available in older versions
+      commandFormat = 'basic';
     } else {
+      // Very old versions - minimal support
+      supportsObject = mainHelp.includes('get');
       commandFormat = 'basic';
     }
 
@@ -76,9 +87,17 @@ async function checkCapabilities(): Promise<{
 export async function getSchema(subcommand: string): Promise<any> {
   try {
     const { supportsTestReport } = await checkCapabilities();
-    const command = supportsTestReport ? 'test-results' : 'object';
+    
+    let args: string[];
+    if (supportsTestReport) {
+      // Modern format: test-results supports subcommands like 'tests'
+      args = ['xcresulttool', 'help', 'get', 'test-results', subcommand];
+    } else {
+      // Legacy format: object command doesn't have subcommands, get general help
+      args = ['xcresulttool', 'help', 'get', 'object'];
+    }
 
-    const { stdout } = await execa('xcrun', ['xcresulttool', 'help', 'get', command, subcommand]);
+    const { stdout } = await execa('xcrun', args);
 
     // Extract JSON Schema section
     const schemaStart = stdout.indexOf('Command output structure (JSON Schema):');
@@ -97,23 +116,34 @@ export async function getSchema(subcommand: string): Promise<any> {
       );
     }
 
-    // Find matching closing brace
-    let braceCount = 0;
-    let jsonEnd = jsonStart;
-    for (let i = jsonStart; i < stdout.length; i++) {
-      if (stdout[i] === '{') braceCount++;
-      if (stdout[i] === '}') braceCount--;
-      if (braceCount === 0) {
-        jsonEnd = i;
-        break;
-      }
+    // Find the end of JSON by looking for the USAGE section
+    const usageStart = stdout.indexOf('\nUSAGE:', jsonStart);
+    if (usageStart === -1) {
+      throw new XcjsonError(
+        'Could not find end of JSON Schema in help output',
+        'SCHEMA_PARSE_ERROR'
+      );
     }
 
-    const jsonString = stdout.substring(jsonStart, jsonEnd + 1);
+    // Extract JSON text and clean up any trailing whitespace
+    const jsonString = stdout.substring(jsonStart, usageStart).trim();
+    
     try {
       return JSON.parse(jsonString);
-    } catch {
-      throw new XcjsonError('Failed to parse JSON Schema', 'SCHEMA_PARSE_ERROR');
+    } catch (parseError: any) {
+      // If JSON parsing fails, the string might have unescaped newlines in descriptions
+      // Handle the specific case where Apple's xcresulttool outputs malformed JSON with embedded newlines
+      const fixedJsonString = jsonString
+        .replace(
+          /"Human-readable duration with optional\ncomponents of days, hours, minutes and seconds"/g,
+          '"Human-readable duration with optional\\ncomponents of days, hours, minutes and seconds"'
+        );
+      
+      try {
+        return JSON.parse(fixedJsonString);
+      } catch {
+        throw new XcjsonError('Failed to parse JSON Schema', 'SCHEMA_PARSE_ERROR');
+      }
     }
   } catch (error: any) {
     if (error instanceof XcjsonError) {
@@ -144,14 +174,14 @@ export async function getSummary(bundlePath: string): Promise<any> {
   }
 
   try {
-    const { supportsTestReport, supportsObject } = await checkCapabilities();
+    const { supportsTestReport, supportsObject, commandFormat } = await checkCapabilities();
 
     let args: string[];
     if (supportsTestReport) {
       // Modern format: test-results
       args = ['xcresulttool', 'get', 'test-results', 'tests', '--path', bundlePath];
-    } else if (supportsObject) {
-      // Legacy format: object with --legacy flag
+    } else if (supportsObject && commandFormat === 'legacy') {
+      // Legacy format: object with --legacy flag (version 23000+)
       args = [
         'xcresulttool',
         'get',
@@ -162,9 +192,12 @@ export async function getSummary(bundlePath: string): Promise<any> {
         '--format',
         'json',
       ];
-    } else {
-      // Very old format: try basic object command
+    } else if (supportsObject && commandFormat === 'basic') {
+      // Basic format: direct get command (version 22000-22999)
       args = ['xcresulttool', 'get', '--path', bundlePath, '--format', 'json'];
+    } else {
+      // Fallback: try the most basic format
+      args = ['xcresulttool', 'get', '--path', bundlePath];
     }
 
     const { stdout } = await execa('xcrun', args);
@@ -202,7 +235,7 @@ export async function getTestDetails(bundlePath: string, testId: string): Promis
   }
 
   try {
-    const { supportsTestReport, supportsObject } = await checkCapabilities();
+    const { supportsTestReport, supportsObject, commandFormat } = await checkCapabilities();
 
     let args: string[];
     if (supportsTestReport) {
@@ -217,8 +250,8 @@ export async function getTestDetails(bundlePath: string, testId: string): Promis
         '--path',
         bundlePath,
       ];
-    } else if (supportsObject) {
-      // Legacy format: object with --legacy flag
+    } else if (supportsObject && commandFormat === 'legacy') {
+      // Legacy format: object with --legacy flag (version 23000+)
       args = [
         'xcresulttool',
         'get',
@@ -231,9 +264,12 @@ export async function getTestDetails(bundlePath: string, testId: string): Promis
         '--format',
         'json',
       ];
-    } else {
-      // Very old format: try basic get command
+    } else if (supportsObject && commandFormat === 'basic') {
+      // Basic format: direct get command (version 22000-22999)
       args = ['xcresulttool', 'get', '--path', bundlePath, '--id', testId, '--format', 'json'];
+    } else {
+      // Fallback: try the most basic format
+      args = ['xcresulttool', 'get', '--path', bundlePath, '--id', testId];
     }
 
     const { stdout } = await execa('xcrun', args);
