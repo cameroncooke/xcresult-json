@@ -2,113 +2,200 @@
 
 ## Overview
 
-xcresult-json is a production-grade CLI tool that transforms Xcode test results from proprietary `.xcresult` bundles into structured JSON for CI/CD pipelines. The architecture is designed for performance, reliability, and compatibility across different Xcode versions.
+xcresult-json is a production-grade CLI tool that transforms Xcode test results from proprietary `.xcresult` bundles into structured JSON for CI/CD pipelines. The architecture follows clean architecture principles with dependency injection, format abstraction, and comprehensive testing across multiple Xcode versions.
 
-## System Architecture
+## Clean Architecture Implementation
 
 ```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   CLI Entry     │───▶│  xcjson Wrapper  │───▶│  Apple's        │
-│   (index.ts)    │    │  (xcjson.ts)     │    │  xcresulttool   │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-         │                       │
-         ▼                       ▼
-┌─────────────────┐    ┌──────────────────┐
-│   Parser        │    │   Cache Layer    │
-│   (parser.ts)   │    │   (LRU + Map)    │
-└─────────────────┘    └──────────────────┘
-         │
-         ▼
-┌─────────────────┐    ┌──────────────────┐
-│   Validator     │    │   Schema         │
-│   (validator.ts)│    │   (schema.ts)    │
-└─────────────────┘    └──────────────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Structured     │
-│  JSON Output    │
-└─────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                     Public API Layer                        │
+│  ┌─────────────────┐    ┌─────────────────┐                 │
+│  │   api.ts        │    │   index.ts      │                 │
+│  │ (Library API)   │    │ (CLI Interface) │                 │
+│  └─────────────────┘    └─────────────────┘                 │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   Core Business Logic                       │
+│  ┌─────────────────┐    ┌─────────────────┐                 │
+│  │  parser.ts      │    │  interfaces.ts  │                 │
+│  │ (Orchestration) │    │ (Contracts)     │                 │
+│  └─────────────────┘    └─────────────────┘                 │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  Format Parser Registry                     │
+│  ┌─────────────────┐ ┌─────────────────┐ ┌──────────────┐   │
+│  │ Xcode16Parser   │ │ Xcode15Parser   │ │ LegacyParser │   │
+│  │ (Priority: 100) │ │ (Priority: 90)  │ │ (Priority:80)│   │
+│  └─────────────────┘ └─────────────────┘ └──────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  Infrastructure Layer                       │
+│  ┌────────────────────────────────┐ ┌────────────────────┐  │
+│  │  xcresulttool-data-source.ts   │ │     cache.ts       │  │ 
+│  │  (xcresulttool execution)      │ │  (LRU Caching)     │  │
+│  └────────────────────────────────┘ └────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ## Core Data Flow
 
-### 1. CLI Entry Point (`src/index.ts`)
+### 1. Public API Layer
 
-**Purpose**: Command-line interface and argument processing
+#### CLI Entry Point (`src/index.ts`)
+**Purpose**: Command-line interface and user interaction
 **Key Responsibilities**:
 - Parse CLI arguments using yargs
 - Handle `--no-cache`, `--pretty`, `--validate` flags  
 - Route to schema printing or xcresult processing
 - Set appropriate exit codes (0=success, 10=failures, 1-2=errors)
 
-**Critical Implementation**:
+**Clean Interface Implementation**:
 ```typescript
-// Disable cache if requested
-if (options['no-cache']) {
-  disableCache();
-}
+// Uses public API - no direct dependencies on implementation
+import { parseXCResult } from './api.js';
 
-// Exit with proper codes for CI/CD
+const report = await parseXCResult(bundlePath, {
+  cache: !options['no-cache'],
+  validate: options.validate
+});
+
 const hasFailures = report.suites.some(suite => suite.failed.length > 0);
 process.exit(hasFailures ? 10 : 0);
 ```
 
-### 2. xcresulttool Wrapper (`src/xcjson.ts`)
-
-**Purpose**: Interface with Apple's xcresulttool with intelligent caching
+#### Library API (`src/api.ts`)
+**Purpose**: Stable public interface for programmatic usage
 **Key Responsibilities**:
-- Detect xcresulttool capabilities (modern vs legacy format)
-- Execute xcresult commands with proper error handling
-- Implement two-tier caching system for performance
-- Handle different Xcode version formats automatically
+- Dependency injection and configuration
+- Parser registration and orchestration
+- Hide implementation details from consumers
 
-**Format Detection Cascade**:
+**Dependency Injection Pattern**:
 ```typescript
-// Check if modern format is supported
-async function supportsTestReport(): Promise<boolean> {
-  const { stdout } = await execa('xcrun', ['xcresulttool', 'get', '--help']);
-  return stdout.includes('test-results');
+export async function parseXCResult(bundlePath: string, options: ParseOptions = {}): Promise<Report> {
+  // Inject data source dependency
+  const dataSource = new XCResultToolDataSource({
+    cache: options.cache ?? true,
+    validate: options.validate ?? false
+  });
+  
+  // Inject parser dependency and register format parsers
+  const parser = new XCResultParser(dataSource);
+  const formatParsers = createFormatParsers();
+  formatParsers.forEach(p => parser.registerParser(p));
+  
+  return await parser.parse(bundlePath);
 }
-
-// Use appropriate command format
-const command = await supportsTestReport() 
-  ? ['xcresulttool', 'get', 'test-results', 'tests', '--path', path]
-  : ['xcresulttool', 'get', 'object', '--legacy', '--path', path, '--format', 'json'];
 ```
 
-**Caching Strategy**:
-- **Capability Cache**: Stores xcresulttool version detection
-- **Result Cache**: LRU cache for xcresult data (Map-based)
-- **Cache Keys**: `summary:${path}` and `details:${path}:${testId}`
-- **Performance Impact**: 3x speedup demonstrated in tests
+### 2. Core Business Logic Layer
 
-### 3. Parser Engine (`src/parser.ts`)
-
-**Purpose**: Transform raw xcresult JSON into standardized Report format
+#### Parser Orchestrator (`src/core/parser.ts`)
+**Purpose**: Pure business logic with injected dependencies
 **Key Responsibilities**:
-- Handle multiple xcresult formats (modern, legacy, mixed)
-- Extract real assertion messages from failure data
-- Calculate accurate test durations
-- Support both XCTest and Swift Testing frameworks
+- Orchestrate format detection and parsing
+- Manage parser registry with priority-based selection
+- Handle errors and fallback logic
+- No direct dependencies on external systems
 
-**Format Detection Cascade**:
+**Format Detection with Fallback**:
 ```typescript
-async function parseXCResult(path: string): Promise<Report> {
-  try {
-    // Try legacy format first (most reliable)
-    return await parseLegacyFormat(path);
-  } catch {
-    // Fall back to modern format
-    const summary = await getSummary(path);
+export class XCResultParser {
+  private parsers: FormatParser[] = [];
+  
+  constructor(private dataSource: XCResultDataSource) {}
+  
+  async parse(bundlePath: string): Promise<Report> {
+    const data = await this.dataSource.getData(bundlePath);
     
-    if (summary.testNodes) {
-      return await parseTestNodes(summary, path);
-    } else if (summary.issues?.testableSummaries?._values) {
-      return await parseModernFormat(summary, path);
+    // Try parsers in priority order (highest first)
+    for (const parser of this.parsers) {
+      if (parser.canParse(data)) {
+        return await parser.parse(bundlePath, data);
+      }
     }
-    // ... more fallbacks
+    
+    throw new Error('No compatible format parser found');
   }
+  
+  registerParser(parser: FormatParser): void {
+    this.parsers.push(parser);
+    // Sort by priority (highest first)
+    this.parsers.sort((a, b) => b.priority - a.priority);
+  }
+}
+```
+
+### 3. Format Parser Registry
+
+#### Multi-Version Format Support
+**Purpose**: Handle different Xcode versions with automatic detection
+**Key Responsibilities**:
+- Detect data format based on structure
+- Parse format-specific data into unified Report structure
+- Priority-based fallback system
+
+**Format Detection Logic**:
+```typescript
+// Xcode 16+ Format Parser (Priority: 100)
+canParse(data: any): boolean {
+  return !!(data?.devicesAndConfigurations && 
+           Array.isArray(data.devicesAndConfigurations) && 
+           typeof data?.passedTests === 'number');
+}
+
+// Xcode 15.x Format Parser (Priority: 90)  
+canParse(data: any): boolean {
+  return !!(data?.actions?._values && 
+           data.metadataRef && 
+           !data.devicesAndConfigurations);
+}
+
+// Legacy Format Parser (Priority: 80)
+canParse(data: any): boolean {
+  return !!(data?.issues?.testableSummaries?._values || 
+           data.actions?._values);
+}
+```
+
+### 4. Infrastructure Layer
+
+#### Data Source Abstraction (`src/infrastructure/xcresulttool-data-source.ts`)
+**Purpose**: Encapsulate all xcresulttool implementation details
+**Key Responsibilities**:
+- xcresulttool capability detection and command execution
+- Caching implementation with performance optimization
+- Error handling and retry logic
+- Format command selection based on Xcode version
+
+**Smart Command Selection**:
+```typescript
+private async executeXCResultTool(bundlePath: string, capabilities: XCResultToolCapabilities): Promise<any> {
+  // Try modern format first (Xcode 16+)
+  if (capabilities.supportsTestResults) {
+    try {
+      const { stdout } = await execa('xcrun', [
+        'xcresulttool', 'get', 'test-results', 'summary',
+        '--path', bundlePath, '--format', 'json'
+      ]);
+      return JSON.parse(stdout);
+    } catch {
+      console.warn('Modern format failed, falling back to object format');
+    }
+  }
+  
+  // Try object format (Xcode 15+)
+  if (capabilities.supportsGetObject) {
+    // ... fallback implementation
+  }
+  
+  // Final fallback to legacy format
 }
 ```
 
@@ -231,26 +318,67 @@ class XcjsonError extends Error {
 
 ## Testing Architecture
 
-### Test Categories
-1. **Unit Tests**: Individual functions and modules
-2. **Integration Tests**: Real xcresult parsing with fixtures
-3. **Performance Tests**: Cache speedup benchmarks
-4. **CLI E2E Tests**: Full command-line workflow testing
+### Clean Architecture Testing Strategy
 
-### Test Fixtures Strategy
-```bash
-# Real xcresult generation
-./scripts/generate-test-fixtures.sh
-# ↓ Creates ↓
-test/fixtures/TestResult.xcresult  # Mixed XCTest + Swift Testing
+#### Test Categories by Layer
+1. **Unit Tests** (`test/unit/`): Pure business logic with dependency injection
+2. **Integration Tests** (`test/integration/`): Real xcresult bundles from CI matrix
+3. **Contract Tests**: Interface compliance across all format parsers  
+4. **Performance Tests**: Cache speedup validation with benchmarks
+5. **CLI E2E Tests**: Full command-line workflow with exit code validation
+
+#### CI Matrix Testing
+**Real xcresult Bundle Generation**:
+```yaml
+# .github/workflows/ci.yml - Compatibility Matrix
+strategy:
+  matrix:
+    include:
+      - xcode: "16.2"
+        format: "xcode16" 
+      - xcode: "16.1"
+        format: "xcode16"
+      - xcode: "16.0" 
+        format: "xcode16"
+      - xcode: "15.4"
+        format: "xcode15"
 ```
 
-### Mock Strategy
+**Generated Test Fixtures**:
+- `test/fixtures/xcode-16.2.xcresult` (Generated in CI)
+- `test/fixtures/xcode-16.1.xcresult` (Generated in CI)
+- `test/fixtures/xcode-16.0.xcresult` (Generated in CI)  
+- `test/fixtures/xcode-15.4.xcresult` (Generated in CI)
+- `test/fixtures/simple-test.json` (Static fixture for unit tests)
+
+#### Dependency Injection Testing
 ```typescript
-// Mock xcresulttool responses with controlled delays
-mockExeca.mockImplementation(async (command: string, args: string[]) => {
-  await new Promise(resolve => setTimeout(resolve, 50)); // Simulate delay
-  return { stdout: JSON.stringify(mockData) };
+// Unit tests use mocked data sources
+const mockDataSource: XCResultDataSource = {
+  async getData(bundlePath: string) {
+    return mockXcresultData;
+  }
+};
+
+const parser = new XCResultParser(mockDataSource);
+```
+
+#### Contract Testing Pattern
+```typescript
+// All format parsers must implement the same interface
+describe('Format Parser Contract Tests', () => {
+  const formatParsers = createFormatParsers();
+  
+  formatParsers.forEach(parser => {
+    describe(`${parser.name} parser`, () => {
+      it('should implement FormatParser interface', () => {
+        expect(parser).toHaveProperty('name');
+        expect(parser).toHaveProperty('priority');
+        expect(parser).toHaveProperty('canParse');
+        expect(parser).toHaveProperty('parse');
+      });
+    });
+  });
 });
 ```
 
@@ -286,21 +414,57 @@ mockExeca.mockImplementation(async (command: string, args: string[]) => {
 
 ## Compatibility Matrix
 
-| Xcode Version | xcresulttool Format | Support Level |
-|---------------|---------------------|---------------|
-| 12.x          | Legacy only         | Full ✅       |
-| 13.x          | Legacy + Modern     | Full ✅       |
-| 14.x          | Legacy + Modern     | Full ✅       |
-| 15.x+         | Modern preferred    | Full ✅       |
+### CI-Validated Xcode Support
+| Xcode Version | xcresulttool Format | Parser Used | CI Status |
+|---------------|---------------------|-------------|-----------|
+| 16.2          | `test-results summary` | Xcode16Parser | ✅ Tested |
+| 16.1          | `test-results summary` | Xcode16Parser | ✅ Tested |
+| 16.0          | `test-results summary` | Xcode16Parser | ✅ Tested |
+| 15.4          | `get object`          | Xcode15Parser | ✅ Tested |
+| 15.x          | `get object`          | Xcode15Parser | 🟡 Inferred |
+| 14.x+         | `get object --legacy` | LegacyParser  | 🟡 Inferred |
 
-### Format Detection Logic
+### Format Detection & Fallback Chain
 ```typescript
-// Auto-detect and use best available format
-const hasModernSupport = await supportsTestReport();
-const command = hasModernSupport 
-  ? modernFormatCommand(path)
-  : legacyFormatCommand(path);
+// Automatic format detection with priority-based fallback
+export class XCResultToolDataSource {
+  private async executeXCResultTool(bundlePath: string, capabilities: XCResultToolCapabilities): Promise<any> {
+    // 1. Try Xcode 16+ modern format (fastest)
+    if (capabilities.supportsTestResults) {
+      try {
+        return await this.executeModernFormat(bundlePath);
+      } catch {
+        console.warn('Modern format failed, falling back to object format');
+      }
+    }
+    
+    // 2. Try Xcode 15+ object format  
+    if (capabilities.supportsGetObject) {
+      try {
+        return await this.executeObjectFormat(bundlePath);
+      } catch {
+        console.warn('Object format failed, falling back to legacy format');
+      }
+    }
+    
+    // 3. Final fallback to legacy format
+    return await this.executeLegacyFormat(bundlePath);
+  }
+}
+
+// Format parsers with priority-based selection
+const formatParsers = [
+  new Xcode16FormatParser(), // Priority: 100 - Try first
+  new Xcode15FormatParser(), // Priority: 90  - Fallback
+  new LegacyFormatParser(),  // Priority: 80  - Final fallback
+];
 ```
+
+### Real-World Validation
+- **Calculator App Test Project**: 70+ tests with mixed XCTest + Swift Testing
+- **Intentional Failures**: Validates failure message extraction across formats
+- **CI Artifact Generation**: Each Xcode version generates real xcresult bundles
+- **Cross-Version Compatibility**: Same test project runs on all supported Xcode versions
 
 ## Future Architecture Considerations
 
