@@ -57,7 +57,8 @@ describe('XcJSON Module', () => {
       const mockSchema = { type: 'object', properties: {} };
       
       mockExeca
-        .mockResolvedValueOnce({ stdout: 'get test-report' }) // capability check
+        .mockResolvedValueOnce({ stdout: 'xcresulttool help' }) // main help check
+        .mockResolvedValueOnce({ stdout: 'test-results object get' }) // get help check
         .mockResolvedValueOnce({
           stdout: `Command output structure (JSON Schema):\n${JSON.stringify(mockSchema)}`
         });
@@ -70,7 +71,8 @@ describe('XcJSON Module', () => {
       const mockSchema = { type: 'object', properties: {} };
       
       mockExeca
-        .mockResolvedValueOnce({ stdout: 'get commands get --help' }) // no test-report
+        .mockResolvedValueOnce({ stdout: 'xcresulttool help object' }) // main help with object
+        .mockResolvedValueOnce({ stdout: 'object get' }) // get help without test-results
         .mockResolvedValueOnce({
           stdout: `Command output structure (JSON Schema):\n${JSON.stringify(mockSchema)}`
         });
@@ -81,7 +83,8 @@ describe('XcJSON Module', () => {
 
     it('should handle missing schema marker', async () => {
       mockExeca
-        .mockResolvedValueOnce({ stdout: 'get test-report' })
+        .mockResolvedValueOnce({ stdout: 'xcresulttool help' })
+        .mockResolvedValueOnce({ stdout: 'test-results object get' })
         .mockResolvedValueOnce({ stdout: 'No schema marker here' });
       
       await expect(getSchema('tests')).rejects.toMatchObject({
@@ -91,7 +94,8 @@ describe('XcJSON Module', () => {
 
     it('should handle missing JSON start after marker', async () => {
       mockExeca
-        .mockResolvedValueOnce({ stdout: 'get test-report' })
+        .mockResolvedValueOnce({ stdout: 'xcresulttool help' })
+        .mockResolvedValueOnce({ stdout: 'test-results object get' })
         .mockResolvedValueOnce({
           stdout: 'Command output structure (JSON Schema):\nNo opening brace here'
         });
@@ -103,7 +107,8 @@ describe('XcJSON Module', () => {
 
     it('should handle malformed JSON', async () => {
       mockExeca
-        .mockResolvedValueOnce({ stdout: 'get test-report' })
+        .mockResolvedValueOnce({ stdout: 'xcresulttool help' })
+        .mockResolvedValueOnce({ stdout: 'test-results object get' })
         .mockResolvedValueOnce({
           stdout: 'Command output structure (JSON Schema):\n{invalid json'
         });
@@ -124,7 +129,8 @@ describe('XcJSON Module', () => {
 
     it('should handle command failure after capability check', async () => {
       mockExeca
-        .mockResolvedValueOnce({ stdout: 'get test-report' })
+        .mockResolvedValueOnce({ stdout: 'xcresulttool help' })
+        .mockResolvedValueOnce({ stdout: 'test-results object get' })
         .mockRejectedValueOnce(new Error('Help command failed'));
       
       await expect(getSchema('tests')).rejects.toMatchObject({
@@ -138,7 +144,8 @@ describe('XcJSON Module', () => {
       const mockData = { summary: 'data' };
       
       mockExeca
-        .mockResolvedValueOnce({ stdout: 'get test-report' })
+        .mockResolvedValueOnce({ stdout: 'xcresulttool help' }) // main help
+        .mockResolvedValueOnce({ stdout: 'test-results object get' }) // get help
         .mockResolvedValueOnce({ stdout: JSON.stringify(mockData) });
       
       const result = await getSummary('/test.xcresult');
@@ -149,7 +156,8 @@ describe('XcJSON Module', () => {
       const mockData = { legacy: 'data' };
       
       mockExeca
-        .mockResolvedValueOnce({ stdout: 'get commands get --help' })
+        .mockResolvedValueOnce({ stdout: 'xcresulttool help object' }) // main help with object
+        .mockResolvedValueOnce({ stdout: 'object get' }) // get help without test-results
         .mockResolvedValueOnce({ stdout: JSON.stringify(mockData) });
       
       const result = await getSummary('/test.xcresult');
@@ -158,7 +166,8 @@ describe('XcJSON Module', () => {
 
     it('should handle JSON parse error', async () => {
       mockExeca
-        .mockResolvedValueOnce({ stdout: 'get test-report' })
+        .mockResolvedValueOnce({ stdout: 'xcresulttool help' })
+        .mockResolvedValueOnce({ stdout: 'test-results object get' })
         .mockResolvedValueOnce({ stdout: 'invalid json' });
       
       await expect(getSummary('/test.xcresult')).rejects.toMatchObject({
@@ -168,7 +177,8 @@ describe('XcJSON Module', () => {
 
     it('should handle invalid bundle error', async () => {
       mockExeca
-        .mockResolvedValueOnce({ stdout: 'get test-report' })
+        .mockResolvedValueOnce({ stdout: 'xcresulttool help' })
+        .mockResolvedValueOnce({ stdout: 'test-results object get' })
         .mockRejectedValueOnce({
           exitCode: 1,
           stderr: 'Error: not a valid .xcresult bundle at path',
@@ -192,7 +202,8 @@ describe('XcJSON Module', () => {
 
     it('should handle general command error', async () => {
       mockExeca
-        .mockResolvedValueOnce({ stdout: 'get test-report' })
+        .mockResolvedValueOnce({ stdout: 'xcresulttool help' })
+        .mockResolvedValueOnce({ stdout: 'test-results object get' })
         .mockRejectedValueOnce({ exitCode: 2, message: 'Other error' });
       
       await expect(getSummary('/test.xcresult')).rejects.toMatchObject({
@@ -205,14 +216,15 @@ describe('XcJSON Module', () => {
       const mockData = { cached: 'data' };
       
       mockExeca
-        .mockResolvedValueOnce({ stdout: 'get test-report' })
+        .mockResolvedValueOnce({ stdout: 'xcresulttool help' })
+        .mockResolvedValueOnce({ stdout: 'test-results object get' })
         .mockResolvedValueOnce({ stdout: JSON.stringify(mockData) });
       
       const result1 = await getSummary('/test.xcresult');
       const result2 = await getSummary('/test.xcresult'); // Should use cache
       
       expect(result1).toEqual(result2);
-      expect(mockExeca).toHaveBeenCalledTimes(2); // Only capability + data, no second data call
+      expect(mockExeca).toHaveBeenCalledTimes(3); // capability check (2) + data (1), no second data call
     });
 
     it('should handle cache overflow', async () => {
@@ -223,7 +235,8 @@ describe('XcJSON Module', () => {
       
       // Only first call needs capability check, rest use cached result
       mockExeca
-        .mockResolvedValueOnce({ stdout: 'get test-report' })
+        .mockResolvedValueOnce({ stdout: 'xcresulttool help' })
+        .mockResolvedValueOnce({ stdout: 'test-results object get' })
         .mockResolvedValueOnce({ stdout: JSON.stringify(mockData1) })
         .mockResolvedValueOnce({ stdout: JSON.stringify(mockData2) })
         .mockResolvedValueOnce({ stdout: JSON.stringify(mockData3) })
@@ -234,7 +247,7 @@ describe('XcJSON Module', () => {
       await getSummary('/test3.xcresult');
       await getSummary('/test4.xcresult'); // This should evict first item
       
-      expect(mockExeca).toHaveBeenCalledTimes(5); // 1 capability + 4 data calls
+      expect(mockExeca).toHaveBeenCalledTimes(6); // 2 capability + 4 data calls
     });
   });
 
@@ -243,7 +256,8 @@ describe('XcJSON Module', () => {
       const mockDetails = { details: 'data' };
       
       mockExeca
-        .mockResolvedValueOnce({ stdout: 'get test-report' })
+        .mockResolvedValueOnce({ stdout: 'xcresulttool help' })
+        .mockResolvedValueOnce({ stdout: 'test-results object get' })
         .mockResolvedValueOnce({ stdout: JSON.stringify(mockDetails) });
       
       const result = await getTestDetails('/test.xcresult', 'test-id');
@@ -254,7 +268,8 @@ describe('XcJSON Module', () => {
       const mockDetails = { legacy: 'data' };
       
       mockExeca
-        .mockResolvedValueOnce({ stdout: 'get commands get --help' })
+        .mockResolvedValueOnce({ stdout: 'xcresulttool help object' })
+        .mockResolvedValueOnce({ stdout: 'object get' })
         .mockResolvedValueOnce({ stdout: JSON.stringify(mockDetails) });
       
       const result = await getTestDetails('/test.xcresult', 'test-id');
@@ -263,14 +278,15 @@ describe('XcJSON Module', () => {
 
     it('should return null and warn on error', async () => {
       mockExeca
-        .mockResolvedValueOnce({ stdout: 'get test-report' })
+        .mockResolvedValueOnce({ stdout: 'xcresulttool help' })
+        .mockResolvedValueOnce({ stdout: 'test-results object get' })
         .mockRejectedValueOnce(new Error('Test not found'));
       
       const result = await getTestDetails('/test.xcresult', 'missing-id');
       
       expect(result).toBeNull();
       expect(mockConsole.warn).toHaveBeenCalledWith(
-        'Warning: Failed to get test details for missing-id: Test not found'
+        expect.stringContaining('Warning: Failed to get test details for missing-id: Test not found')
       );
     });
 
@@ -278,19 +294,21 @@ describe('XcJSON Module', () => {
       const mockDetails = { details: 'cached' };
       
       mockExeca
-        .mockResolvedValueOnce({ stdout: 'get test-report' })
+        .mockResolvedValueOnce({ stdout: 'xcresulttool help' })
+        .mockResolvedValueOnce({ stdout: 'test-results object get' })
         .mockResolvedValueOnce({ stdout: JSON.stringify(mockDetails) });
       
       const result1 = await getTestDetails('/test.xcresult', 'test-id');
       const result2 = await getTestDetails('/test.xcresult', 'test-id');
       
       expect(result1).toEqual(result2);
-      expect(mockExeca).toHaveBeenCalledTimes(2); // Only capability + data
+      expect(mockExeca).toHaveBeenCalledTimes(3); // capability check (2) + data (1)
     });
 
     it('should handle JSON parse error and return null', async () => {
       mockExeca
-        .mockResolvedValueOnce({ stdout: 'get test-report' })
+        .mockResolvedValueOnce({ stdout: 'xcresulttool help' })
+        .mockResolvedValueOnce({ stdout: 'test-results object get' })
         .mockRejectedValueOnce(new Error('Parse error'));
       
       const result = await getTestDetails('/test.xcresult', 'test-id');
@@ -315,7 +333,8 @@ describe('XcJSON Module', () => {
       const mockData = { test: 'data' };
       
       mockExeca
-        .mockResolvedValueOnce({ stdout: 'get test-report' })
+        .mockResolvedValueOnce({ stdout: 'xcresulttool help' })
+        .mockResolvedValueOnce({ stdout: 'test-results object get' })
         .mockResolvedValueOnce({ stdout: JSON.stringify(mockData) });
       
       await getSummary('/test.xcresult');
@@ -323,12 +342,13 @@ describe('XcJSON Module', () => {
       
       // After clearing cache, should make new calls
       mockExeca
-        .mockResolvedValueOnce({ stdout: 'get test-report' })
+        .mockResolvedValueOnce({ stdout: 'xcresulttool help' })
+        .mockResolvedValueOnce({ stdout: 'test-results object get' })
         .mockResolvedValueOnce({ stdout: JSON.stringify(mockData) });
       
       await getSummary('/test.xcresult');
       
-      expect(mockExeca).toHaveBeenCalledTimes(4); // 2 capability + 2 data calls
+      expect(mockExeca).toHaveBeenCalledTimes(6); // 2x(capability + data) calls
     });
   });
 });
