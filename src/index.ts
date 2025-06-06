@@ -2,9 +2,8 @@
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import chalk from 'chalk';
-import { getSchema, disableCache } from './xcjson.js';
-import { initializeValidator } from './validator.js';
-import { parseXCResult } from './parser.js';
+import { parseXCResult, XCResultError } from './api.js';
+import { getSchema } from './xcjson.js';
 
 interface CLIOptions {
   path: string;
@@ -27,18 +26,11 @@ async function printSchema(): Promise<void> {
 
 async function processXCResult(options: CLIOptions): Promise<void> {
   try {
-    // Disable cache if --no-cache option is set
-    if (options['no-cache']) {
-      disableCache();
-    }
-
-    // Initialize validator only if validation is enabled
-    if (options.validate) {
-      await initializeValidator();
-    }
-
-    // Parse xcresult
-    const report = await parseXCResult(options.path);
+    // Parse xcresult using new API
+    const report = await parseXCResult(options.path, {
+      cache: !options['no-cache'],
+      validate: options.validate
+    });
 
     // Output JSON
     const jsonOutput = options.pretty ? JSON.stringify(report, null, 2) : JSON.stringify(report);
@@ -56,8 +48,14 @@ async function processXCResult(options: CLIOptions): Promise<void> {
       process.exit(0);
     }
   } catch (error: any) {
-    console.error(chalk.red(`Error: ${error.message}`));
-    process.exit(error.code === 'INVALID_BUNDLE' ? 2 : 1);
+    if (error instanceof XCResultError) {
+      console.error(chalk.red(`Error: ${error.message}`));
+      const exitCode = error.code === 'INVALID_BUNDLE' ? 2 : 1;
+      process.exit(exitCode);
+    } else {
+      console.error(chalk.red(`Unexpected error: ${error.message}`));
+      process.exit(1);
+    }
   }
 }
 
