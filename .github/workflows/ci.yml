@@ -8,16 +8,13 @@ on:
 
 jobs:
   test:
-    runs-on: macos-14
-    strategy:
-      matrix:
-        xcode: ['15.0', '16.0']
+    runs-on: macos-latest
     
     steps:
       - uses: actions/checkout@v4
       
-      - name: Set up Xcode
-        run: sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app
+      - name: Set up Xcode (latest)
+        run: sudo xcode-select -s /Applications/Xcode.app
       
       - name: Set up Node.js
         uses: actions/setup-node@v4

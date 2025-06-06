@@ -2,6 +2,7 @@
   "name": "xcresult-json",
   "version": "1.0.0",
   "description": "Production-ready CLI tool for extracting test results from Xcode .xcresult bundles with comprehensive failure message extraction and mixed framework support",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
