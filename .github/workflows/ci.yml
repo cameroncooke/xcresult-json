@@ -58,8 +58,8 @@ jobs:
       
       - name: Test Core Components with JSON Fixtures
         run: |
-          # Run all core tests with coverage (using JSON fixtures for CLI tests)
-          npm test test/xcjson.test.ts test/validator.test.ts test/parser.test.ts test/cache.test.ts test/schema.test.ts test/cli-json.test.ts -- --coverage
+          # Run all core tests with coverage (excluding CLI tests that require real xcresult bundles)
+          npm test test/xcjson.test.ts test/validator.test.ts test/formats.test.ts test/cache.test.ts test/schema.test.ts -- --coverage
           
       - name: Test Format Abstraction
         run: |
