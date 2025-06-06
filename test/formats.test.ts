@@ -1,9 +1,10 @@
 import { ParserRegistry } from '../src/formats/registry';
 import { Xcode16Parser } from '../src/formats/xcode16-parser';
 import { Xcode15Parser } from '../src/formats/xcode15-parser';
+import { Xcode15LegacyParser } from '../src/formats/xcode15-legacy-parser';
 import { LegacyParser } from '../src/formats/legacy-parser';
 import { FormatParser } from '../src/formats/types';
-import simpleTestFixture from './fixtures/simple-test.json';
+import { loadJsonFixture } from './test-utils';
 
 describe('Format Parser System', () => {
   let registry: ParserRegistry;
@@ -76,6 +77,7 @@ describe('Format Parser System', () => {
     });
 
     it('should identify legacy format data', () => {
+      const simpleTestFixture = loadJsonFixture('simple-test.json');
       expect(parser.canParse(simpleTestFixture)).toBe(true);
       expect(parser.canParse({ testNodes: [] })).toBe(false);
       expect(parser.canParse({ actions: { _values: [] } })).toBe(false);
@@ -84,6 +86,7 @@ describe('Format Parser System', () => {
     });
 
     it('should parse legacy format data correctly', async () => {
+      const simpleTestFixture = loadJsonFixture('simple-test.json');
       const result = await parser.parse('/test', simpleTestFixture);
       
       expect(result.totalSuites).toBe(1);
@@ -104,6 +107,7 @@ describe('Format Parser System', () => {
     });
 
     it('should identify Xcode 16 format data', () => {
+      const simpleTestFixture = loadJsonFixture('simple-test.json');
       const xcode16Data = { testNodes: [{ nodeType: 'Test Suite' }] };
       expect(parser.canParse(xcode16Data)).toBe(true);
       expect(parser.canParse(simpleTestFixture)).toBe(false);
@@ -156,6 +160,7 @@ describe('Format Parser System', () => {
     });
 
     it('should identify Xcode 15 format data', () => {
+      const simpleTestFixture = loadJsonFixture('simple-test.json');
       const xcode15Data = { actions: { _values: [{ startedTime: { _value: '2024-01-01' } }] } };
       expect(parser.canParse(xcode15Data)).toBe(true);
       expect(parser.canParse(simpleTestFixture)).toBe(false);
@@ -184,6 +189,278 @@ describe('Format Parser System', () => {
       expect(result.totalDuration).toBe(2); // 2 seconds
       expect(result.suites).toEqual([]);
     });
+
+    it('should parse Xcode 15 format with test data', async () => {
+      // Mock execa to avoid real xcresulttool calls
+      jest.mock('execa');
+      const { execa } = await import('execa');
+      const mockExeca = execa as jest.MockedFunction<typeof execa>;
+      
+      mockExeca.mockResolvedValue({
+        stdout: JSON.stringify({
+          summaries: {
+            _values: [{
+              testableSummaries: {
+                _values: [{
+                  name: { _value: 'TestSuite' },
+                  tests: {
+                    _values: [{
+                      identifier: { _value: 'testExample' },
+                      testStatus: { _value: 'Success' },
+                      duration: { _value: 0.1 }
+                    }]
+                  }
+                }]
+              }
+            }]
+          }
+        })
+      } as any);
+
+      const xcode15Data = {
+        actions: {
+          _values: [
+            {
+              startedTime: { _value: '2024-01-01T10:00:00.000Z' },
+              endedTime: { _value: '2024-01-01T10:00:02.000Z' },
+              actionResult: {
+                testsRef: {
+                  id: { _value: 'test-ref-123' }
+                }
+              },
+            },
+          ],
+        },
+      };
+
+      const result = await parser.parse('/test', xcode15Data);
+      
+      expect(result.totalSuites).toBe(1);
+      expect(result.totalTests).toBe(1);
+      expect(result.totalDuration).toBe(2);
+      expect(result.suites).toHaveLength(1);
+      expect(result.suites[0].suiteName).toBe('TestSuite');
+      
+      mockExeca.mockRestore();
+    });
+
+    it('should handle missing timing data gracefully', async () => {
+      const xcode15Data = {
+        actions: {
+          _values: [
+            {
+              actionResult: {},
+            },
+          ],
+        },
+      };
+
+      const result = await parser.parse('/test', xcode15Data);
+      
+      expect(result.totalSuites).toBe(0);
+      expect(result.totalTests).toBe(0);
+      expect(result.totalDuration).toBe(0);
+      expect(result.suites).toEqual([]);
+    });
+
+    it('should handle malformed timing data', async () => {
+      const xcode15Data = {
+        actions: {
+          _values: [
+            {
+              startedTime: { _value: 'invalid-date' },
+              endedTime: { _value: '2024-01-01T10:00:02.000Z' },
+              actionResult: {},
+            },
+          ],
+        },
+      };
+
+      const result = await parser.parse('/test', xcode15Data);
+      
+      expect(result.totalSuites).toBe(0);
+      expect(result.totalTests).toBe(0);
+      // NaN is expected when dates are invalid - this is the actual behavior
+      expect(result.totalDuration).toBeNaN();
+      expect(result.suites).toEqual([]);
+    });
+
+    it('should handle empty actions array', async () => {
+      const xcode15Data = {
+        actions: {
+          _values: []
+        },
+      };
+
+      const result = await parser.parse('/test', xcode15Data);
+      
+      expect(result.totalSuites).toBe(0);
+      expect(result.totalTests).toBe(0);
+      expect(result.totalDuration).toBe(0);
+      expect(result.suites).toEqual([]);
+    });
+  });
+
+  describe('Xcode15LegacyParser', () => {
+    let parser: Xcode15LegacyParser;
+
+    beforeEach(() => {
+      parser = new Xcode15LegacyParser();
+    });
+
+    it('should identify Xcode 15 legacy format data', () => {
+      const simpleTestFixture = loadJsonFixture('simple-test.json');
+      const xcode15Data = { actions: { _values: [{ startedTime: { _value: '2024-01-01' } }] } };
+      expect(parser.canParse(xcode15Data)).toBe(true);
+      expect(parser.canParse(simpleTestFixture)).toBeFalsy();
+      expect(parser.canParse({ testNodes: [] })).toBeFalsy();
+      expect(parser.canParse({})).toBeFalsy();
+      expect(parser.canParse(null)).toBeFalsy();
+    });
+
+    it('should have correct priority (85)', () => {
+      expect(parser.priority).toBe(85);
+      expect(parser.name).toBe('xcode15-legacy');
+    });
+
+    it('should parse with timing data correctly', async () => {
+      const xcode15Data = {
+        actions: {
+          _values: [
+            {
+              startedTime: { _value: '2024-01-01T10:00:00.000Z' },
+              endedTime: { _value: '2024-01-01T10:00:05.000Z' },
+              actionResult: {},
+            },
+          ],
+        },
+      };
+
+      const result = await parser.parse('/test', xcode15Data);
+      
+      expect(result.totalSuites).toBe(0);
+      expect(result.totalTests).toBe(0);
+      expect(result.totalDuration).toBe(5); // 5 seconds
+      expect(result.suites).toEqual([]);
+    });
+
+    it('should handle missing action timing gracefully', async () => {
+      const xcode15Data = {
+        actions: {
+          _values: [
+            {
+              actionResult: {},
+            },
+          ],
+        },
+      };
+
+      const result = await parser.parse('/test', xcode15Data);
+      
+      expect(result.totalSuites).toBe(0);
+      expect(result.totalTests).toBe(0);
+      expect(result.totalDuration).toBe(0);
+      expect(result.suites).toEqual([]);
+    });
+
+    it('should handle empty actions gracefully', async () => {
+      const xcode15Data = {
+        actions: {
+          _values: []
+        },
+      };
+
+      const result = await parser.parse('/test', xcode15Data);
+      
+      expect(result.totalSuites).toBe(0);
+      expect(result.totalTests).toBe(0);
+      expect(result.totalDuration).toBe(0);
+      expect(result.suites).toEqual([]);
+    });
+
+    it('should handle test suites with test data using mocked xcresulttool', async () => {
+      // Mock execa for the getTestDetails call
+      jest.mock('execa');
+      const { execa } = await import('execa');
+      const mockExeca = execa as jest.MockedFunction<typeof execa>;
+      
+      mockExeca.mockResolvedValue({
+        stdout: JSON.stringify({
+          summaries: {
+            _values: [{
+              testableSummaries: {
+                _values: [{
+                  name: { _value: 'LegacyTestSuite' },
+                  tests: {
+                    _values: [{
+                      identifier: { _value: 'testLegacyExample' },
+                      testStatus: { _value: 'Success' },
+                      duration: { _value: 0.25 }
+                    }, {
+                      identifier: { _value: 'testLegacyFailure' },
+                      testStatus: { _value: 'Failure' },
+                      duration: { _value: 0.35 },
+                      summaryRef: { id: { _value: 'failure-ref-123' } }
+                    }]
+                  }
+                }]
+              }
+            }]
+          }
+        })
+      } as any);
+
+      const xcode15Data = {
+        actions: {
+          _values: [
+            {
+              startedTime: { _value: '2024-01-01T10:00:00.000Z' },
+              endedTime: { _value: '2024-01-01T10:00:03.000Z' },
+              actionResult: {
+                testsRef: {
+                  id: { _value: 'legacy-test-ref-456' }
+                }
+              },
+            },
+          ],
+        },
+      };
+
+      const result = await parser.parse('/test', xcode15Data);
+      
+      expect(result.totalSuites).toBe(1);
+      expect(result.totalTests).toBe(2);
+      expect(result.totalDuration).toBe(3);
+      expect(result.suites).toHaveLength(1);
+      expect(result.suites[0].suiteName).toBe('LegacyTestSuite');
+      expect(result.suites[0].passed).toHaveLength(1);
+      expect(result.suites[0].failed).toHaveLength(1);
+      
+      mockExeca.mockRestore();
+    });
+
+    it('should handle missing test references gracefully', async () => {
+      const xcode15Data = {
+        actions: {
+          _values: [
+            {
+              startedTime: { _value: '2024-01-01T10:00:00.000Z' },
+              endedTime: { _value: '2024-01-01T10:00:01.000Z' },
+              actionResult: {
+                // No testsRef
+              },
+            },
+          ],
+        },
+      };
+
+      const result = await parser.parse('/test', xcode15Data);
+      
+      expect(result.totalSuites).toBe(0);
+      expect(result.totalTests).toBe(0);
+      expect(result.totalDuration).toBe(1);
+      expect(result.suites).toEqual([]);
+    });
   });
 
   describe('Format Detection Priority', () => {
@@ -205,6 +482,7 @@ describe('Format Parser System', () => {
       registry.register(new Xcode16Parser());
 
       // Test legacy format
+      const simpleTestFixture = loadJsonFixture('simple-test.json');
       const legacyResult = await registry.parse('/test', simpleTestFixture);
       expect(legacyResult.totalSuites).toBe(1);
 
