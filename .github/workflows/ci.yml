@@ -31,11 +31,11 @@ jobs:
       - name: Type check
         run: npm run typecheck
       
-      - name: Test
-        run: npm test -- --coverage
-      
       - name: Build
         run: npm run build
+      
+      - name: Test
+        run: npm test -- --coverage
       
       - name: Validate schema drift
         run: |
