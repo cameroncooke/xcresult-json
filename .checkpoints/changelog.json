@@ -1,0 +1,14 @@
+[
+  {
+    "timestamp": "2025-06-06T11:25:00.965Z",
+    "action": "CREATE_CHECKPOINT",
+    "description": "Created checkpoint: format-abstraction-complete_2025-06-06T11-25-00",
+    "details": "Completed format abstraction refactor with parser registry, latest-to-oldest format fallback, and working tests"
+  },
+  {
+    "timestamp": "2025-06-06T11:09:52.460Z",
+    "action": "CREATE_CHECKPOINT",
+    "description": "Created checkpoint: pre-format-abstraction-refactor_2025-06-06T11-09-52",
+    "details": "Before refactoring to support multiple xcresult format versions with abstraction layer"
+  }
+]

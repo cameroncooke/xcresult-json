@@ -49,3 +49,6 @@ export class LRUCache<K, V> {
     return this.cache.size;
   }
 }
+
+// Alias for backward compatibility
+export { LRUCache as Cache };

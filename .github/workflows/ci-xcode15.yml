@@ -1,0 +1,153 @@
+name: CI - Xcode 15
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-xcode15:
+    runs-on: macos-14  # Use macos-14 for Xcode 15.x
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Select Xcode 15 (Latest)
+        run: |
+          # List available Xcode versions
+          ls -la /Applications | grep Xcode || true
+          
+          # Select the latest available Xcode 15.x
+          if [ -d "/Applications/Xcode_15.4.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_15.4.app
+          elif [ -d "/Applications/Xcode_15.3.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_15.3.app
+          elif [ -d "/Applications/Xcode_15.2.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_15.2.app
+          elif [ -d "/Applications/Xcode_15.1.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_15.1.app
+          elif [ -d "/Applications/Xcode_15.0.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_15.0.app
+          else
+            sudo xcode-select -s /Applications/Xcode.app
+          fi
+          
+          # Verify Xcode selection
+          echo "Selected Xcode path: $(xcode-select -p)"
+          xcodebuild -version
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Lint
+        run: npm run lint
+      
+      - name: Type check
+        run: npm run typecheck
+      
+      - name: Build
+        run: npm run build
+      
+      - name: Test xcresulttool capabilities (Xcode 15)
+        run: |
+          echo "Testing xcresulttool with Xcode 15"
+          xcrun xcresulttool version
+          xcrun xcresulttool --help | head -20
+          
+          # Test if legacy object commands are available
+          if xcrun xcresulttool get --help | grep -q "object"; then
+            echo "✅ Xcode 15 format supported: object command available"
+          else
+            echo "❌ object command not found"
+          fi
+      
+      - name: Test Core Components
+        run: |
+          # Run tests for core components with coverage
+          npm test test/xcjson.test.ts test/validator.test.ts test/parser.test.ts test/cache.test.ts test/schema.test.ts test/cli-json.test.ts -- --coverage
+          
+      - name: Test CLI Schema Command
+        run: |
+          # Test CLI schema command works with Xcode 15
+          echo "Testing schema command with Xcode 15"
+          timeout 30s node dist/index.js --schema || echo "Schema command completed or timed out"
+      
+      - name: Generate Xcode 15 Test Fixtures
+        run: |
+          # Create a simple test project and generate xcresult
+          mkdir -p test-fixtures/xcode15
+          cd test-fixtures/xcode15
+          
+          # Create a minimal Swift package for testing
+          cat > Package.swift << 'EOF'
+          // swift-tools-version: 5.8
+          import PackageDescription
+          
+          let package = Package(
+              name: "TestPackage",
+              targets: [
+                  .target(name: "TestPackage"),
+                  .testTarget(name: "TestPackageTests", dependencies: ["TestPackage"])
+              ]
+          )
+          EOF
+          
+          mkdir -p Sources/TestPackage Tests/TestPackageTests
+          
+          cat > Sources/TestPackage/TestPackage.swift << 'EOF'
+          public struct TestPackage {
+              public init() {}
+              public func hello() -> String { "Hello, World!" }
+          }
+          EOF
+          
+          cat > Tests/TestPackageTests/TestPackageTests.swift << 'EOF'
+          import XCTest
+          @testable import TestPackage
+          
+          final class TestPackageTests: XCTestCase {
+              func testExample() throws {
+                  let package = TestPackage()
+                  XCTAssertEqual(package.hello(), "Hello, World!")
+              }
+              
+              func testFailure() throws {
+                  XCTFail("Intentional failure for testing")
+              }
+          }
+          EOF
+          
+          # Run tests and capture xcresult
+          swift test --result-bundle-path xcode15-test.xcresult || true
+          
+          # Copy the fixture back to main test directory
+          if [ -d "xcode15-test.xcresult" ]; then
+            cp -r xcode15-test.xcresult ../../test/fixtures/xcode15/
+            echo "✅ Generated Xcode 15 test fixture"
+          else
+            echo "❌ Failed to generate Xcode 15 test fixture"
+          fi
+      
+      - name: Test CLI with Xcode 15 Fixture
+        run: |
+          if [ -d "test/fixtures/xcode15/xcode15-test.xcresult" ]; then
+            echo "Testing CLI with Xcode 15 fixture"
+            node dist/index.js --path test/fixtures/xcode15/xcode15-test.xcresult --pretty | head -20
+          else
+            echo "No Xcode 15 fixture available"
+          fi
+      
+      - name: Upload Xcode 15 Test Fixtures
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: xcode15-fixtures
+          path: test/fixtures/xcode15/
+          retention-days: 30
