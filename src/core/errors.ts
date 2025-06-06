@@ -13,10 +13,7 @@ export class XCResultError extends Error {
   }
 
   static invalidBundle(path: string): XCResultError {
-    return new XCResultError(
-      `Invalid xcresult bundle: ${path}`,
-      'INVALID_BUNDLE'
-    );
+    return new XCResultError(`Invalid xcresult bundle: ${path}`, 'INVALID_BUNDLE');
   }
 
   static xcresulttoolNotFound(): XCResultError {

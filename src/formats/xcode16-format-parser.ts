@@ -12,22 +12,25 @@ export class Xcode16FormatParser implements FormatParser {
 
   canParse(data: any): boolean {
     // Xcode 16 summary format has devicesAndConfigurations array and test statistics
-    return !!(data?.devicesAndConfigurations && Array.isArray(data.devicesAndConfigurations) && 
-              typeof data?.passedTests === 'number' && 
-              typeof data?.failedTests === 'number');
+    return !!(
+      data?.devicesAndConfigurations &&
+      Array.isArray(data.devicesAndConfigurations) &&
+      typeof data?.passedTests === 'number' &&
+      typeof data?.failedTests === 'number'
+    );
   }
 
   async parse(bundlePath: string, data: any): Promise<Report> {
     // Data is the summary, we need to get detailed test structure
     const testDetails = await this.getTestDetails(bundlePath);
-    
+
     // Extract basic metrics from summary
     const totalTests = (data.passedTests || 0) + (data.failedTests || 0) + (data.skippedTests || 0);
     const totalDuration = this.calculateDuration(data.startTime, data.finishTime);
-    
+
     // Parse test structure from detailed tests
     const suites = this.parseTestNodes(testDetails.testNodes || [], data.testFailures || []);
-    
+
     return {
       totalSuites: suites.length,
       totalTests,
@@ -39,12 +42,17 @@ export class Xcode16FormatParser implements FormatParser {
   private async getTestDetails(bundlePath: string): Promise<any> {
     try {
       const { stdout } = await execa('xcrun', [
-        'xcresulttool', 'get', 'test-results', 'tests',
-        '--path', bundlePath,
-        '--format', 'json'
+        'xcresulttool',
+        'get',
+        'test-results',
+        'tests',
+        '--path',
+        bundlePath,
+        '--format',
+        'json',
       ]);
       return JSON.parse(stdout);
-    } catch (error) {
+    } catch {
       console.warn('Failed to get detailed test structure, using summary only');
       return { testNodes: [] };
     }
@@ -59,10 +67,10 @@ export class Xcode16FormatParser implements FormatParser {
 
   private parseTestNodes(testNodes: any[], testFailures: any[]): any[] {
     const suites: any[] = [];
-    
+
     // Create a map of failures by test identifier for quick lookup
     const failureMap = new Map<string, any>();
-    testFailures.forEach(failure => {
+    testFailures.forEach((failure) => {
       failureMap.set(failure.testIdentifierString || failure.testIdentifier, failure);
     });
 
@@ -107,7 +115,7 @@ export class Xcode16FormatParser implements FormatParser {
       const duration = node.durationInSeconds ?? 0;
       const status = this.mapStatus(node.result);
       const identifier = node.nodeIdentifier || node.name;
-      
+
       // Get failure message if this test failed
       let failureMessage: string | undefined;
       if (status === 'Failure') {

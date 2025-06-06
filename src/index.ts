@@ -29,7 +29,7 @@ async function processXCResult(options: CLIOptions): Promise<void> {
     // Parse xcresult using new API
     const report = await parseXCResult(options.path, {
       cache: !options['no-cache'],
-      validate: options.validate
+      validate: options.validate,
     });
 
     // Output JSON

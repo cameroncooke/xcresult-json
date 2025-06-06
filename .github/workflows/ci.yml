@@ -70,7 +70,7 @@ jobs:
 
   # Cross-version compatibility testing with xcresult generation
   compatibility:
-    name: Xcode ${{ matrix.xcode }} Compatibility
+    name: Xcode Compatibility
     runs-on: macos-15
     strategy:
       matrix:
@@ -130,16 +130,16 @@ jobs:
               -workspace CalculatorApp.xcworkspace \
               -scheme CalculatorApp \
               -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
-              -resultBundlePath "../test/fixtures/xcode${{ matrix.xcode }}-result.xcresult" \
+              -resultBundlePath "../test/fixtures/xcode-${{ matrix.xcode }}.xcresult" \
               -derivedDataPath build
             
             echo "Test run completed with exit code $?"
             set -e
             
             # Verify bundle was created
-            if [ -d "../test/fixtures/xcode${{ matrix.xcode }}-result.xcresult" ]; then
+            if [ -d "../test/fixtures/xcode-${{ matrix.xcode }}.xcresult" ]; then
               echo "✅ Generated xcresult bundle for Xcode ${{ matrix.xcode }}"
-              ls -la "../test/fixtures/xcode${{ matrix.xcode }}-result.xcresult"
+              ls -la "../test/fixtures/xcode-${{ matrix.xcode }}.xcresult"
             else
               echo "❌ Failed to generate xcresult bundle"
               exit 1
@@ -150,25 +150,25 @@ jobs:
       
       - name: Test CLI with Generated Bundle
         run: |
-          if [ -d "${{ matrix.path }}" ] && [ -d "test/fixtures/xcode${{ matrix.xcode }}-result.xcresult" ]; then
+          if [ -d "${{ matrix.path }}" ] && [ -d "test/fixtures/xcode-${{ matrix.xcode }}.xcresult" ]; then
             echo "Testing CLI with Xcode ${{ matrix.xcode }} bundle"
             
             # Test the CLI - expect exit code 10 due to intentional test failures
             set +e
-            node dist/index.js --path "test/fixtures/xcode${{ matrix.xcode }}-result.xcresult" --pretty > "xcode${{ matrix.xcode }}-output.json"
+            node dist/index.js --path "test/fixtures/xcode-${{ matrix.xcode }}.xcresult" --pretty > "xcode-${{ matrix.xcode }}-output.json"
             exit_code=$?
             set -e
             
             echo "CLI exited with code: $exit_code"
             
             # Verify output contains expected structure
-            if grep -q '"totalSuites"' "xcode${{ matrix.xcode }}-output.json"; then
+            if grep -q '"totalSuites"' "xcode-${{ matrix.xcode }}-output.json"; then
               echo "✅ CLI successfully parsed xcresult bundle"
               echo "Preview of output:"
-              head -20 "xcode${{ matrix.xcode }}-output.json"
+              head -20 "xcode-${{ matrix.xcode }}-output.json"
             else
               echo "❌ CLI failed to parse xcresult bundle"
-              cat "xcode${{ matrix.xcode }}-output.json"
+              cat "xcode-${{ matrix.xcode }}-output.json"
               exit 1
             fi
           else
@@ -179,10 +179,10 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: xcresult-xcode${{ matrix.xcode }}
+          name: xcresult-xcode-${{ matrix.xcode }}
           path: |
-            test/fixtures/xcode${{ matrix.xcode }}-result.xcresult/
-            xcode${{ matrix.xcode }}-output.json
+            test/fixtures/xcode-${{ matrix.xcode }}.xcresult/
+            xcode-${{ matrix.xcode }}-output.json
           retention-days: 30
 
   # Integration tests with real bundles
@@ -222,7 +222,7 @@ jobs:
       - name: Download xcresult Artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: xcresult-*
+          pattern: xcresult-xcode-*
           path: artifacts/
           merge-multiple: true
       

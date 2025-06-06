@@ -14,8 +14,8 @@ import { LegacyFormatParser } from './legacy-format-parser.js';
  */
 export function createFormatParsers(): FormatParser[] {
   return [
-    new Xcode16FormatParser(),   // Priority 100 - Latest format
-    new Xcode15FormatParser(),   // Priority 90  - Xcode 15.x format  
-    new LegacyFormatParser(),    // Priority 80  - Legacy format for fixtures
+    new Xcode16FormatParser(), // Priority 100 - Latest format
+    new Xcode15FormatParser(), // Priority 90  - Xcode 15.x format
+    new LegacyFormatParser(), // Priority 80  - Legacy format for fixtures
   ];
 }

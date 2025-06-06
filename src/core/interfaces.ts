@@ -36,14 +36,14 @@ export interface FormatParser {
   readonly name: string;
   /** Priority for format detection (higher = tried first) */
   readonly priority: number;
-  
+
   /**
    * Check if this parser can handle the given data
    * @param data - Raw xcresult data
    * @returns true if parser can handle this format
    */
   canParse(data: any): boolean;
-  
+
   /**
    * Parse the data into structured format
    * @param bundlePath - Original bundle path (for context)

@@ -36,7 +36,7 @@ export class XCResultParser {
     try {
       // Get raw data via injected data source
       const data = await this.dataSource.getData(bundlePath);
-      
+
       // Try each parser in priority order
       for (const parser of this.parsers) {
         if (parser.canParse(data)) {
@@ -52,12 +52,11 @@ export class XCResultParser {
 
       // No parser could handle the data
       throw XCResultError.unsupportedFormat();
-
     } catch (error) {
       if (error instanceof XCResultError) {
         throw error;
       }
-      
+
       // Wrap other errors
       throw XCResultError.xcresulttoolFailed(error as Error);
     }

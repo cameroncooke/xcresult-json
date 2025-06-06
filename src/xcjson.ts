@@ -60,9 +60,9 @@ export async function getSchema(_subcommand: string): Promise<any> {
                   name: { type: 'string' },
                   status: { type: 'string' },
                   duration: { type: 'number' },
-                  failureMessage: { type: 'string' }
-                }
-              }
+                  failureMessage: { type: 'string' },
+                },
+              },
             },
             passed: {
               type: 'array',
@@ -71,14 +71,14 @@ export async function getSchema(_subcommand: string): Promise<any> {
                 properties: {
                   name: { type: 'string' },
                   status: { type: 'string' },
-                  duration: { type: 'number' }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
+                  duration: { type: 'number' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   };
 }
 

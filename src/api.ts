@@ -17,26 +17,29 @@ export interface ParseOptions {
 
 /**
  * Parse an xcresult bundle and return structured test results
- * 
+ *
  * @param bundlePath - Path to .xcresult bundle
  * @param options - Optional parsing configuration
  * @returns Promise resolving to structured test results
  * @throws XCResultError for invalid bundles or xcresulttool issues
  */
-export async function parseXCResult(bundlePath: string, options: ParseOptions = {}): Promise<Report> {
+export async function parseXCResult(
+  bundlePath: string,
+  options: ParseOptions = {}
+): Promise<Report> {
   // Create data source with options
   const dataSource = new XCResultToolDataSource({
     cache: options.cache ?? true,
-    validate: options.validate ?? false
+    validate: options.validate ?? false,
   });
-  
+
   // Create parser with injected dependency
   const parser = new XCResultParser(dataSource);
-  
+
   // Register format parsers
   const formatParsers = createFormatParsers();
-  formatParsers.forEach(p => parser.registerParser(p));
-  
+  formatParsers.forEach((p) => parser.registerParser(p));
+
   // Parse and return results
   return await parser.parse(bundlePath);
 }
